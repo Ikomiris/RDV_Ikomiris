@@ -1,0 +1,49 @@
+/* Admin Styles for Ikomiris Booking System */
+
+.ibs-form-container {
+    background: #fff;
+    padding: 20px;
+    margin: 20px 0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.ibs-table-container {
+    background: #fff;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.ibs-status-active {
+    background: #28a745;
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ibs-status-inactive {
+    background: #dc3545;
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.button-link-delete {
+    color: #a00;
+}
+
+.button-link-delete:hover {
+    color: #dc3232;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 782px) {
+    .ibs-form-container,
+    .ibs-table-container {
+        padding: 15px;
+    }
+}

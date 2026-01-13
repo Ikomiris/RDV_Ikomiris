@@ -1,0 +1,507 @@
+/* ==========================
+   IKOMIRIS BOOKING SYSTEM
+   Frontend Styles
+   ========================== */
+
+/* Variables CSS */
+:root {
+    --ibs-primary: #0073aa;
+    --ibs-primary-hover: #005177;
+    --ibs-secondary: #f0f0f0;
+    --ibs-text: #333;
+    --ibs-text-light: #666;
+    --ibs-border: #ddd;
+    --ibs-success: #28a745;
+    --ibs-error: #dc3545;
+    --ibs-white: #fff;
+    --ibs-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    --ibs-shadow-hover: 0 4px 12px rgba(0,0,0,0.15);
+    --ibs-radius: 8px;
+    --ibs-transition: all 0.3s ease;
+}
+
+/* Container principal */
+.ibs-booking-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    color: var(--ibs-text);
+}
+
+/* Steps */
+.ibs-step {
+    opacity: 1;
+    animation: fadeIn 0.4s ease-in-out;
+}
+
+.ibs-step-hidden {
+    display: none;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ibs-step-title {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 30px;
+    color: var(--ibs-text);
+    text-align: center;
+}
+
+/* Bouton retour */
+.ibs-back-btn {
+    background: transparent;
+    border: none;
+    color: var(--ibs-primary);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 10px 0;
+    margin-bottom: 20px;
+    transition: var(--ibs-transition);
+}
+
+.ibs-back-btn:hover {
+    color: var(--ibs-primary-hover);
+    transform: translateX(-5px);
+}
+
+/* Loading */
+.ibs-loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--ibs-text-light);
+    font-size: 16px;
+}
+
+/* Grille des magasins */
+.ibs-stores-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.ibs-store-card {
+    background: var(--ibs-white);
+    border: 2px solid var(--ibs-border);
+    border-radius: var(--ibs-radius);
+    padding: 20px;
+    cursor: pointer;
+    transition: var(--ibs-transition);
+    box-shadow: var(--ibs-shadow);
+}
+
+.ibs-store-card:hover {
+    border-color: var(--ibs-primary);
+    box-shadow: var(--ibs-shadow-hover);
+    transform: translateY(-3px);
+}
+
+.ibs-store-card img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: var(--ibs-radius);
+    margin-bottom: 15px;
+}
+
+.ibs-store-name {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--ibs-text);
+}
+
+.ibs-store-address {
+    font-size: 14px;
+    color: var(--ibs-text-light);
+    margin-bottom: 5px;
+}
+
+.ibs-store-contact {
+    font-size: 14px;
+    color: var(--ibs-text-light);
+}
+
+/* Grille des services */
+.ibs-services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.ibs-service-card {
+    background: var(--ibs-white);
+    border: 2px solid var(--ibs-border);
+    border-radius: var(--ibs-radius);
+    padding: 20px;
+    cursor: pointer;
+    transition: var(--ibs-transition);
+    box-shadow: var(--ibs-shadow);
+    position: relative;
+    overflow: hidden;
+}
+
+.ibs-service-card:hover {
+    border-color: var(--ibs-primary);
+    box-shadow: var(--ibs-shadow-hover);
+    transform: translateY(-3px);
+}
+
+.ibs-service-card img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    border-radius: var(--ibs-radius);
+    margin-bottom: 15px;
+}
+
+.ibs-service-name {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--ibs-text);
+}
+
+.ibs-service-description {
+    font-size: 14px;
+    color: var(--ibs-text-light);
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+.ibs-service-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 15px;
+    border-top: 1px solid var(--ibs-border);
+}
+
+.ibs-service-duration {
+    font-size: 14px;
+    color: var(--ibs-primary);
+    font-weight: 600;
+}
+
+.ibs-service-price {
+    font-size: 18px;
+    color: var(--ibs-text);
+    font-weight: 600;
+}
+
+/* Calendrier */
+.ibs-calendar-container {
+    max-width: 400px;
+    margin: 40px auto;
+}
+
+.ibs-date-picker {
+    width: 100%;
+    padding: 15px;
+    font-size: 16px;
+    border: 2px solid var(--ibs-border);
+    border-radius: var(--ibs-radius);
+    transition: var(--ibs-transition);
+    cursor: pointer;
+}
+
+.ibs-date-picker:focus {
+    outline: none;
+    border-color: var(--ibs-primary);
+}
+
+/* Selected date display */
+.ibs-selected-date {
+    text-align: center;
+    font-size: 18px;
+    color: var(--ibs-primary);
+    font-weight: 600;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: var(--ibs-secondary);
+    border-radius: var(--ibs-radius);
+}
+
+/* Grille des créneaux horaires */
+.ibs-slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.ibs-slot-btn {
+    background: var(--ibs-white);
+    border: 2px solid var(--ibs-border);
+    border-radius: var(--ibs-radius);
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--ibs-transition);
+    color: var(--ibs-text);
+}
+
+.ibs-slot-btn:hover {
+    border-color: var(--ibs-primary);
+    background: var(--ibs-primary);
+    color: var(--ibs-white);
+    transform: scale(1.05);
+}
+
+.ibs-no-slots {
+    text-align: center;
+    padding: 40px;
+    color: var(--ibs-text-light);
+    font-size: 16px;
+}
+
+/* Récapitulatif de réservation */
+.ibs-booking-summary {
+    background: var(--ibs-secondary);
+    border-radius: var(--ibs-radius);
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.ibs-booking-summary h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 20px;
+    color: var(--ibs-text);
+}
+
+.ibs-summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ibs-border);
+}
+
+.ibs-summary-item:last-child {
+    border-bottom: none;
+}
+
+.ibs-summary-label {
+    font-weight: 600;
+    color: var(--ibs-text);
+}
+
+.ibs-summary-value {
+    color: var(--ibs-text-light);
+}
+
+/* Formulaire */
+.ibs-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.ibs-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.ibs-form-group {
+    margin-bottom: 20px;
+}
+
+.ibs-form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--ibs-text);
+    font-size: 14px;
+}
+
+.ibs-form-group input,
+.ibs-form-group textarea {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: 2px solid var(--ibs-border);
+    border-radius: var(--ibs-radius);
+    transition: var(--ibs-transition);
+    font-family: inherit;
+}
+
+.ibs-form-group input:focus,
+.ibs-form-group textarea:focus {
+    outline: none;
+    border-color: var(--ibs-primary);
+}
+
+.ibs-checkbox-group label {
+    display: flex;
+    align-items: center;
+    font-weight: normal;
+}
+
+.ibs-checkbox-group input[type="checkbox"] {
+    width: auto;
+    margin-right: 10px;
+}
+
+/* Bouton de soumission */
+.ibs-submit-btn {
+    width: 100%;
+    padding: 18px;
+    font-size: 18px;
+    font-weight: 600;
+    background: var(--ibs-primary);
+    color: var(--ibs-white);
+    border: none;
+    border-radius: var(--ibs-radius);
+    cursor: pointer;
+    transition: var(--ibs-transition);
+    margin-top: 20px;
+}
+
+.ibs-submit-btn:hover {
+    background: var(--ibs-primary-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--ibs-shadow-hover);
+}
+
+.ibs-submit-btn:disabled {
+    background: var(--ibs-border);
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Confirmation */
+.ibs-confirmation-message {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.ibs-success-icon {
+    width: 80px;
+    height: 80px;
+    background: var(--ibs-success);
+    color: var(--ibs-white);
+    font-size: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 30px;
+    animation: successPulse 0.6s ease-in-out;
+}
+
+@keyframes successPulse {
+    0% {
+        transform: scale(0);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.ibs-confirmation-message h2 {
+    font-size: 32px;
+    margin-bottom: 20px;
+    color: var(--ibs-success);
+}
+
+.ibs-confirmation-message p {
+    font-size: 16px;
+    color: var(--ibs-text-light);
+    margin-bottom: 30px;
+    line-height: 1.6;
+}
+
+.ibs-new-booking-btn {
+    padding: 15px 40px;
+    font-size: 16px;
+    font-weight: 600;
+    background: var(--ibs-primary);
+    color: var(--ibs-white);
+    border: none;
+    border-radius: var(--ibs-radius);
+    cursor: pointer;
+    transition: var(--ibs-transition);
+}
+
+.ibs-new-booking-btn:hover {
+    background: var(--ibs-primary-hover);
+    transform: translateY(-2px);
+}
+
+/* Messages d'erreur */
+.ibs-error-message {
+    background: #fff3cd;
+    color: #856404;
+    padding: 15px;
+    border-radius: var(--ibs-radius);
+    margin: 20px 0;
+    border-left: 4px solid #ffc107;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .ibs-booking-container {
+        padding: 15px;
+    }
+    
+    .ibs-step-title {
+        font-size: 24px;
+        margin-bottom: 20px;
+    }
+    
+    .ibs-stores-grid,
+    .ibs-services-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .ibs-form-row {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+    
+    .ibs-slots-grid {
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+        gap: 10px;
+    }
+    
+    .ibs-slot-btn {
+        padding: 12px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .ibs-step-title {
+        font-size: 20px;
+    }
+    
+    .ibs-store-card,
+    .ibs-service-card {
+        padding: 15px;
+    }
+    
+    .ibs-confirmation-message {
+        padding: 40px 15px;
+    }
+    
+    .ibs-confirmation-message h2 {
+        font-size: 24px;
+    }
+}

@@ -133,8 +133,14 @@ class BookingAPI {
             WHERE store_id = %d AND booking_date = %s AND status IN ('pending', 'confirmed')
         ", $store_id, $date));
         
+        // Récupérer les événements Google Calendar du magasin
+        $google_bookings = $this->get_google_calendar_bookings($store_id, $date);
+        
+        // Fusionner les réservations WordPress et Google Calendar
+        $all_bookings = array_merge($bookings, $google_bookings);
+        
         // Générer les créneaux disponibles
-        $slots = $this->generate_slots($schedules, $duration, $bookings);
+        $slots = $this->generate_slots($schedules, $duration, $all_bookings);
         
         wp_send_json_success($slots);
     }
@@ -181,6 +187,40 @@ class BookingAPI {
         }
         
         return true;
+    }
+    
+    /**
+     * Récupère les événements Google Calendar pour un magasin et une date
+     * 
+     * @param int $store_id ID du magasin
+     * @param string $date Date au format Y-m-d
+     * @return array Tableau d'objets avec booking_time et duration
+     */
+    private function get_google_calendar_bookings($store_id, $date) {
+        // Récupérer le google_calendar_id du magasin
+        global $wpdb;
+        $store = $wpdb->get_row($wpdb->prepare("
+            SELECT google_calendar_id FROM {$wpdb->prefix}ibs_stores WHERE id = %d
+        ", $store_id));
+        
+        if (!$store || empty($store->google_calendar_id)) {
+            return [];
+        }
+        
+        // Initialiser Google Calendar et récupérer les événements
+        $google = new \IBS\Integrations\GoogleCalendar();
+        
+        if (!$google->is_configured()) {
+            return [];
+        }
+        
+        try {
+            $events = $google->get_events_for_date($store->google_calendar_id, $date);
+            return $events;
+        } catch (\Exception $e) {
+            error_log('IBS: Erreur lors de la récupération des événements Google Calendar - ' . $e->getMessage());
+            return [];
+        }
     }
     
     public function create_booking() {
@@ -245,6 +285,9 @@ class BookingAPI {
         
         $booking_id = $wpdb->insert_id;
         
+        // Synchroniser avec Google Calendar
+        $this->sync_to_google_calendar($booking_id, $store_id, $service_id, $date, $time, $firstname, $lastname, $email, $phone, $message, $service->duration);
+        
         // Envoyer les emails de confirmation
         $this->send_confirmation_emails($booking_id);
         
@@ -252,6 +295,87 @@ class BookingAPI {
             'message' => __('Réservation confirmée !', 'ikomiris-booking'),
             'booking_id' => $booking_id
         ]);
+    }
+    
+    /**
+     * Synchronise une réservation avec Google Calendar
+     * 
+     * @param int $booking_id ID de la réservation
+     * @param int $store_id ID du magasin
+     * @param int $service_id ID du service
+     * @param string $date Date de réservation (Y-m-d)
+     * @param string $time Heure de réservation (H:i:s)
+     * @param string $firstname Prénom du client
+     * @param string $lastname Nom du client
+     * @param string $email Email du client
+     * @param string $phone Téléphone du client
+     * @param string $message Message du client
+     * @param int $duration Durée du service en minutes
+     */
+    private function sync_to_google_calendar($booking_id, $store_id, $service_id, $date, $time, $firstname, $lastname, $email, $phone, $message, $duration) {
+        global $wpdb;
+        
+        // Récupérer le google_calendar_id du magasin
+        $store = $wpdb->get_row($wpdb->prepare("
+            SELECT google_calendar_id, name FROM {$wpdb->prefix}ibs_stores WHERE id = %d
+        ", $store_id));
+        
+        // Vérifier si le magasin a un calendrier Google associé
+        if (!$store || empty($store->google_calendar_id)) {
+            error_log('IBS: Magasin #' . $store_id . ' sans google_calendar_id - pas de synchronisation Google');
+            return;
+        }
+        
+        // Récupérer le nom du service
+        $service = $wpdb->get_row($wpdb->prepare("
+            SELECT name FROM {$wpdb->prefix}ibs_services WHERE id = %d
+        ", $service_id));
+        
+        // Initialiser Google Calendar
+        $google = new \IBS\Integrations\GoogleCalendar();
+        
+        if (!$google->is_configured()) {
+            error_log('IBS: Google Calendar non configuré - pas de synchronisation');
+            return;
+        }
+        
+        // Construire la date/heure de début et fin en ISO 8601 avec timezone
+        $timezone = function_exists('wp_timezone') ? wp_timezone() : new \DateTimeZone(get_option('timezone_string') ?: 'UTC');
+        $start_datetime = new \DateTime($date . ' ' . $time, $timezone);
+        $end_datetime = clone $start_datetime;
+        $end_datetime->modify('+' . intval($duration) . ' minutes');
+        
+        // Préparer les données de l'événement
+        $event_data = [
+            'summary' => ($service ? $service->name : 'Réservation') . ' - ' . $firstname . ' ' . $lastname,
+            'description' => 
+                "Réservation Ikomiris Booking System\n\n" .
+                "Client : " . $firstname . " " . $lastname . "\n" .
+                "Email : " . $email . "\n" .
+                "Téléphone : " . $phone . "\n" .
+                "Magasin : " . $store->name . "\n\n" .
+                ($message ? "Message :\n" . $message : ''),
+            'start' => $start_datetime->format('c'),
+            'end' => $end_datetime->format('c'),
+        ];
+        
+        // Créer l'événement dans Google Calendar
+        $event_id = $google->create_event($store->google_calendar_id, $event_data);
+        
+        if ($event_id) {
+            // Sauvegarder l'event_id dans la réservation
+            $wpdb->update(
+                $wpdb->prefix . 'ibs_bookings',
+                ['google_event_id' => $event_id],
+                ['id' => $booking_id],
+                ['%s'],
+                ['%d']
+            );
+            
+            error_log('IBS: Réservation #' . $booking_id . ' synchronisée avec Google Calendar (event_id: ' . $event_id . ')');
+        } else {
+            error_log('IBS: Échec de la synchronisation de la réservation #' . $booking_id . ' avec Google Calendar');
+        }
     }
     
     private function send_confirmation_emails($booking_id) {

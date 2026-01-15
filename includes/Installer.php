@@ -24,12 +24,19 @@ class Installer {
             email varchar(100),
             description text,
             image_url varchar(500),
+            google_calendar_id varchar(255),
             is_active tinyint(1) DEFAULT 1,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id)
         ) $charset_collate;";
         dbDelta($sql_stores);
+        
+        // Migration : Ajouter la colonne google_calendar_id si elle n'existe pas (installations existantes)
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_stores LIKE 'google_calendar_id'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE $table_stores ADD google_calendar_id varchar(255) AFTER image_url");
+        }
         
         // Table des services
         $table_services = $wpdb->prefix . 'ibs_services';

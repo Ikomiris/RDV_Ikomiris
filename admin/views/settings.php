@@ -38,6 +38,7 @@ if (isset($_POST['ibs_save_settings']) && check_admin_referer('ibs_save_settings
             'confirmation_text',
             'google_client_id',
             'google_client_secret',
+            'google_refresh_token',
             'email_admin_address',
             'email_reminder_hours',
         ];
@@ -272,6 +273,21 @@ function get_setting($key, $default = '') {
                 <th scope="row"><label>Client Secret</label></th>
                 <td>
                     <input type="text" name="google_client_secret" value="<?php echo esc_attr(get_setting('google_client_secret')); ?>" class="regular-text">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Refresh Token</label></th>
+                <td>
+                    <input type="text" name="google_refresh_token" value="<?php echo esc_attr(get_setting('google_refresh_token')); ?>" class="regular-text">
+                    <p class="description">
+                        Token de rafraîchissement OAuth 2.0 (généré lors de l'authentification)<br>
+                        <strong>Comment obtenir le Refresh Token :</strong><br>
+                        1. Créez un projet dans la <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a><br>
+                        2. Activez l'API Google Calendar v3<br>
+                        3. Créez des identifiants OAuth 2.0 (Client ID et Client Secret)<br>
+                        4. Utilisez l'<a href="https://developers.google.com/oauthplayground/" target="_blank">OAuth 2.0 Playground</a> pour générer le Refresh Token<br>
+                        5. Sélectionnez le scope : <code>https://www.googleapis.com/auth/calendar.readonly</code> (ou <code>.events</code> pour la synchronisation bidirectionnelle)
+                    </p>
                 </td>
             </tr>
         </table>

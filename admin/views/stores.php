@@ -6,6 +6,15 @@ if (!defined('ABSPATH')) {
 global $wpdb;
 $table = $wpdb->prefix . 'ibs_stores';
 
+// Assurer la présence de la colonne google_calendar_id (installations existantes)
+$column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'google_calendar_id'");
+if (empty($column_exists)) {
+    $altered = $wpdb->query("ALTER TABLE $table ADD google_calendar_id varchar(255) AFTER image_url");
+    if ($altered === false) {
+        echo '<div class="notice notice-error"><p><strong>Erreur :</strong> Impossible d\'ajouter la colonne Google Calendar. Détails : ' . esc_html($wpdb->last_error) . '</p></div>';
+    }
+}
+
 // Traitement des actions
 if (isset($_POST['ibs_save_store'])) {
     check_admin_referer('ibs_save_store_nonce');
@@ -18,6 +27,7 @@ if (isset($_POST['ibs_save_store'])) {
         'email' => sanitize_email($_POST['email']),
         'description' => sanitize_textarea_field($_POST['description']),
         'image_url' => esc_url_raw($_POST['image_url']),
+        'google_calendar_id' => sanitize_text_field($_POST['google_calendar_id']),
         'is_active' => isset($_POST['is_active']) ? 1 : 0,
     ];
     
@@ -113,6 +123,18 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                                     <img src="<?php echo esc_url($edit_store->image_url); ?>" style="max-width: 300px;">
                                 <?php endif; ?>
                             </div>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row"><label for="google_calendar_id">ID Google Calendar</label></th>
+                        <td>
+                            <input type="text" name="google_calendar_id" id="google_calendar_id" class="regular-text" 
+                                   value="<?php echo $edit_mode ? esc_attr($edit_store->google_calendar_id) : ''; ?>">
+                            <p class="description">
+                                L'ID du calendrier Google associé à ce magasin (ex: exemple@group.calendar.google.com)<br>
+                                <a href="https://support.google.com/calendar/answer/37103" target="_blank">Comment trouver mon Calendar ID ?</a>
+                            </p>
                         </td>
                     </tr>
                     

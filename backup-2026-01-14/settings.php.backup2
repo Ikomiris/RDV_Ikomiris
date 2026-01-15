@@ -1,0 +1,241 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+global $wpdb;
+
+// Vérifier que $wpdb est disponible
+if (!isset($wpdb) || !$wpdb) {
+    echo '<div class="wrap"><div class="notice notice-error"><p>Erreur : Impossible d\'accéder à la base de données.</p></div></div>';
+    return;
+}
+
+$table = $wpdb->prefix . 'ibs_settings';
+
+// Sauvegarder les paramètres
+if (isset($_POST['ibs_save_settings'])) {
+    check_admin_referer('ibs_save_settings_nonce');
+    
+    // Vérifier que la table existe
+    $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
+    if ($table_exists != $table) {
+        echo '<div class="notice notice-error"><p>Erreur : La table des paramètres n\'existe pas. Veuillez réactiver le plugin.</p></div>';
+    } else {
+        $settings = [
+            'min_booking_delay',
+            'max_booking_delay',
+            'slot_interval',
+            'theme_color',
+            'theme_secondary_color',
+            'show_prices',
+            'terms_conditions',
+            'confirmation_text',
+            'email_admin_notification',
+            'email_admin_address',
+            'email_customer_confirmation',
+            'email_customer_reminder',
+            'email_reminder_hours',
+        ];
+        
+        foreach ($settings as $key) {
+            // Gérer les checkboxes différemment
+            if (in_array($key, ['show_prices', 'email_admin_notification', 'email_customer_confirmation', 'email_customer_reminder'])) {
+                $value = isset($_POST[$key]) && $_POST[$key] === '1' ? '1' : '0';
+            } else {
+                // Pour les autres champs, utiliser la fonction de sanitization appropriée
+                if (in_array($key, ['terms_conditions', 'confirmation_text'])) {
+                    $value = isset($_POST[$key]) ? sanitize_textarea_field($_POST[$key]) : '';
+                } elseif (in_array($key, ['email_admin_address'])) {
+                    $value = isset($_POST[$key]) ? sanitize_email($_POST[$key]) : '';
+                } else {
+                    $value = isset($_POST[$key]) ? sanitize_text_field($_POST[$key]) : '';
+                }
+            }
+            
+            // Vérifier si le paramètre existe déjà
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM $table WHERE setting_key = %s",
+                $key
+            ));
+            
+            if ($existing) {
+                // Mettre à jour
+                $wpdb->update(
+                    $table,
+                    ['setting_value' => $value],
+                    ['setting_key' => $key],
+                    ['%s'],
+                    ['%s']
+                );
+            } else {
+                // Insérer
+                $wpdb->insert(
+                    $table,
+                    [
+                        'setting_key' => $key,
+                        'setting_value' => $value
+                    ],
+                    ['%s', '%s']
+                );
+            }
+        }
+        
+        // Rediriger pour éviter la double soumission
+        wp_redirect(admin_url('admin.php?page=ikomiris-booking-settings&settings_saved=1'));
+        exit;
+    }
+}
+
+// Afficher le message de succès après redirection
+if (isset($_GET['settings_saved']) && $_GET['settings_saved'] == '1') {
+    echo '<div class="notice notice-success is-dismissible"><p>Paramètres enregistrés avec succès.</p></div>';
+}
+
+// Fonction pour récupérer un paramètre
+function get_setting($key, $default = '') {
+    global $wpdb;
+    
+    if (!isset($wpdb) || !$wpdb) {
+        return $default;
+    }
+    
+    $table = $wpdb->prefix . 'ibs_settings';
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'") == $table;
+    if (!$table_exists) {
+        return $default;
+    }
+    
+    $value = $wpdb->get_var($wpdb->prepare(
+        "SELECT setting_value FROM $table WHERE setting_key = %s",
+        $key
+    ));
+    
+    return $value !== null ? $value : $default;
+}
+?>
+
+<div class="wrap">
+    <h1>Paramètres du Plugin</h1>
+    
+    <form method="post" action="<?php echo esc_url(admin_url('admin.php?page=ikomiris-booking-settings')); ?>">
+        <?php wp_nonce_field('ibs_save_settings_nonce'); ?>
+        
+        <h2>Paramètres de réservation</h2>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><label>Délai minimum de réservation (heures)</label></th>
+                <td>
+                    <input type="number" name="min_booking_delay" value="<?php echo esc_attr(get_setting('min_booking_delay', '2')); ?>" min="0">
+                    <p class="description">Les clients ne pourront réserver qu'à partir de X heures dans le futur.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Délai maximum de réservation (jours)</label></th>
+                <td>
+                    <input type="number" name="max_booking_delay" value="<?php echo esc_attr(get_setting('max_booking_delay', '90')); ?>" min="1">
+                    <p class="description">Les clients pourront réserver jusqu'à X jours à l'avance.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Intervalle des créneaux (minutes)</label></th>
+                <td>
+                    <input type="number" name="slot_interval" value="<?php echo esc_attr(get_setting('slot_interval', '10')); ?>" min="5" step="5">
+                    <p class="description">Créneaux horaires proposés tous les X minutes (recommandé: 10).</p>
+                </td>
+            </tr>
+        </table>
+        
+        <h2>Apparence</h2>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><label>Couleur principale</label></th>
+                <td>
+                    <input type="text" name="theme_color" value="<?php echo esc_attr(get_setting('theme_color', '#0073aa')); ?>" class="ibs-color-picker">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Afficher les prix</label></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="show_prices" value="1" <?php checked(get_setting('show_prices', '1'), '1'); ?>>
+                        Afficher les prix des services
+                    </label>
+                </td>
+            </tr>
+        </table>
+        
+        <h2>Textes personnalisés</h2>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><label>Conditions générales</label></th>
+                <td>
+                    <textarea name="terms_conditions" rows="5" class="large-text"><?php echo esc_textarea(get_setting('terms_conditions')); ?></textarea>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Texte de confirmation</label></th>
+                <td>
+                    <textarea name="confirmation_text" rows="3" class="large-text"><?php echo esc_textarea(get_setting('confirmation_text')); ?></textarea>
+                </td>
+            </tr>
+        </table>
+        
+        <h2>Notifications Email</h2>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><label>Notification admin</label></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="email_admin_notification" value="1" <?php checked(get_setting('email_admin_notification', '1'), '1'); ?>>
+                        Recevoir un email à chaque nouvelle réservation
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Email admin</label></th>
+                <td>
+                    <input type="email" name="email_admin_address" value="<?php echo esc_attr(get_setting('email_admin_address')); ?>" class="regular-text">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Confirmation client</label></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="email_customer_confirmation" value="1" <?php checked(get_setting('email_customer_confirmation', '1'), '1'); ?>>
+                        Envoyer un email de confirmation au client
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Rappel client</label></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="email_customer_reminder" value="1" <?php checked(get_setting('email_customer_reminder', '1'), '1'); ?>>
+                        Envoyer un email de rappel au client
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label>Délai du rappel (heures)</label></th>
+                <td>
+                    <input type="number" name="email_reminder_hours" value="<?php echo esc_attr(get_setting('email_reminder_hours', '24')); ?>" min="1">
+                    <p class="description">Envoyer le rappel X heures avant le rendez-vous.</p>
+                </td>
+            </tr>
+        </table>
+        
+        <p class="submit">
+            <button type="submit" name="ibs_save_settings" class="button button-primary">Enregistrer les paramètres</button>
+        </p>
+    </form>
+</div>
+
+<script>
+jQuery(document).ready(function($) {
+    if ($.fn.wpColorPicker) {
+        $('.ibs-color-picker').wpColorPicker();
+    }
+});
+</script>
+

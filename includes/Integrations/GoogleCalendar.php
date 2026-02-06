@@ -190,6 +190,79 @@ class GoogleCalendar {
         $line = '[' . gmdate('c') . '] ' . $message . PHP_EOL;
         error_log($line, 3, $path);
     }
+
+    private function normalize_hex_color($color) {
+        if (empty($color)) {
+            return '';
+        }
+
+        $color = trim($color);
+        if ($color[0] !== '#') {
+            $color = '#' . $color;
+        }
+
+        $color = sanitize_hex_color($color);
+        return $color ? $color : '';
+    }
+
+    private function hex_to_rgb($hex) {
+        $hex = ltrim($hex, '#');
+        if (strlen($hex) === 3) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        if (strlen($hex) !== 6) {
+            return null;
+        }
+
+        return [
+            'r' => hexdec(substr($hex, 0, 2)),
+            'g' => hexdec(substr($hex, 2, 2)),
+            'b' => hexdec(substr($hex, 4, 2)),
+        ];
+    }
+
+    private function get_event_color_id_from_hex($hex_color) {
+        $hex_color = $this->normalize_hex_color($hex_color);
+        if (empty($hex_color)) {
+            return '';
+        }
+
+        $target = $this->hex_to_rgb($hex_color);
+        if (!$target) {
+            return '';
+        }
+
+        $google_colors = [
+            '1' => '#a4bdfc',
+            '2' => '#7ae7bf',
+            '3' => '#dbadff',
+            '4' => '#ff887c',
+            '5' => '#fbd75b',
+            '6' => '#ffb878',
+            '7' => '#46d6db',
+            '8' => '#e1e1e1',
+            '9' => '#5484ed',
+            '10' => '#51b749',
+            '11' => '#dc2127',
+        ];
+
+        $closest_id = '';
+        $closest_distance = null;
+
+        foreach ($google_colors as $color_id => $hex) {
+            $rgb = $this->hex_to_rgb($hex);
+            if (!$rgb) {
+                continue;
+            }
+            $distance = pow($target['r'] - $rgb['r'], 2) + pow($target['g'] - $rgb['g'], 2) + pow($target['b'] - $rgb['b'], 2);
+            if ($closest_distance === null || $distance < $closest_distance) {
+                $closest_distance = $distance;
+                $closest_id = $color_id;
+            }
+        }
+
+        return $closest_id;
+    }
     
     /**
      * Récupère les événements d'un calendrier pour une date donnée
@@ -610,8 +683,21 @@ class GoogleCalendar {
             ],
         ];
 
-        // Log pour déboguer les problèmes de timezone
-        error_log('IBS Google Calendar: Création événement - Start: ' . $event_data['start'] . ', End: ' . $event_data['end']);
+        if (!empty($event_data['color_id'])) {
+            $event['colorId'] = (string) $event_data['color_id'];
+            error_log('IBS Google Calendar: colorId direct = ' . $event['colorId']);
+        } elseif (!empty($event_data['color'])) {
+            $color_id = $this->get_event_color_id_from_hex($event_data['color']);
+            error_log('IBS Google Calendar: color hex = ' . $event_data['color'] . ' -> colorId = ' . $color_id);
+            if (!empty($color_id)) {
+                $event['colorId'] = (string) $color_id;
+            }
+        } else {
+            error_log('IBS Google Calendar: Aucune couleur fournie dans event_data');
+        }
+
+        // Log pour déboguer
+        error_log('IBS Google Calendar: Création événement - Start: ' . $event_data['start'] . ', End: ' . $event_data['end'] . ', colorId: ' . (isset($event['colorId']) ? $event['colorId'] : 'non défini'));
 
         $response = wp_remote_post($url, [
             'headers' => [

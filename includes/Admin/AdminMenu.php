@@ -10,6 +10,7 @@ class AdminMenu {
     public function __construct() {
         add_action('admin_menu', [$this, 'add_menu']);
         add_action('admin_post_ibs_delete_booking', [$this, 'handle_delete_booking']);
+        add_action('wp_ajax_ibs_test_twilio_connection', [$this, 'test_twilio_connection']);
     }
     
     public function add_menu() {
@@ -104,6 +105,16 @@ class AdminMenu {
             [$this, 'render_emails_page']
         );
 
+        // Sous-menu : WhatsApp
+        add_submenu_page(
+            'ikomiris-booking',
+            __('WhatsApp', 'ikomiris-booking'),
+            __('WhatsApp', 'ikomiris-booking'),
+            'manage_options',
+            'ikomiris-booking-whatsapp',
+            [$this, 'render_whatsapp_page']
+        );
+
         // Sous-menu : Test Google Calendar
         add_submenu_page(
             'ikomiris-booking',
@@ -147,6 +158,10 @@ class AdminMenu {
         require_once IBS_PLUGIN_DIR . 'admin/views/email-customization.php';
     }
 
+    public function render_whatsapp_page() {
+        require_once IBS_PLUGIN_DIR . 'admin/views/whatsapp-settings.php';
+    }
+
     public function render_google_test_page() {
         require_once IBS_PLUGIN_DIR . 'admin/views/google-test.php';
     }
@@ -180,5 +195,48 @@ class AdminMenu {
         $redirect_url = add_query_arg('ibs_booking_deleted', $success ? '1' : '0', $redirect_url);
         wp_safe_redirect($redirect_url);
         exit;
+    }
+
+    /**
+     * Test de connexion Twilio via AJAX
+     */
+    public function test_twilio_connection() {
+        check_ajax_referer('ibs_test_twilio', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permissions insuffisantes');
+        }
+
+        $account_sid = isset($_POST['account_sid']) ? sanitize_text_field($_POST['account_sid']) : '';
+        $auth_token = isset($_POST['auth_token']) ? sanitize_text_field($_POST['auth_token']) : '';
+
+        if (empty($account_sid) || empty($auth_token)) {
+            wp_send_json_error('Account SID et Auth Token requis');
+        }
+
+        // Test de l'API Twilio - recuperer les informations du compte
+        $url = 'https://api.twilio.com/2010-04-01/Accounts/' . $account_sid . '.json';
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERPWD, $account_sid . ':' . $auth_token);
+
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error) {
+            wp_send_json_error('Erreur cURL : ' . $error);
+        }
+
+        if ($http_code === 200) {
+            $data = json_decode($response, true);
+            wp_send_json_success('Compte Twilio : ' . ($data['friendly_name'] ?? 'OK'));
+        } elseif ($http_code === 401) {
+            wp_send_json_error('Identifiants invalides');
+        } else {
+            wp_send_json_error('Erreur HTTP ' . $http_code);
+        }
     }
 }

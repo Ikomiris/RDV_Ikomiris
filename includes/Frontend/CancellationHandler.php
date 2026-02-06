@@ -163,6 +163,9 @@ class CancellationHandler {
         // Envoyer les emails de notification
         $this->send_cancellation_emails($booking->id);
 
+        // Envoyer la notification WhatsApp
+        $this->send_cancellation_whatsapp($booking->id);
+
         error_log('IBS: Réservation #' . $booking->id . ' annulée avec succès par le client');
 
         return [
@@ -230,6 +233,27 @@ class CancellationHandler {
             if (!$admin_sent) {
                 error_log('IBS: Échec de l\'envoi de l\'email admin d\'annulation pour réservation #' . $booking_id);
             }
+        }
+    }
+
+    /**
+     * Envoie la notification WhatsApp d'annulation
+     *
+     * @param int $booking_id ID de la réservation
+     */
+    private function send_cancellation_whatsapp($booking_id) {
+        $whatsapp = new \IBS\Integrations\WhatsAppHandler();
+
+        if (!$whatsapp->is_configured()) {
+            return;
+        }
+
+        $sent = $whatsapp->send_cancellation_confirmation($booking_id);
+
+        if ($sent) {
+            error_log('IBS: Notification WhatsApp d\'annulation envoyée pour réservation #' . $booking_id);
+        } else {
+            error_log('IBS: Échec de l\'envoi de la notification WhatsApp d\'annulation pour réservation #' . $booking_id);
         }
     }
 

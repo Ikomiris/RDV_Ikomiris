@@ -11,22 +11,41 @@ $table_stores = $wpdb->prefix . 'ibs_stores';
 // Traitement des actions
 if (isset($_POST['ibs_save_service'])) {
     check_admin_referer('ibs_save_service_nonce');
-    
+
+    // S'assurer que la colonne color existe
+    $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_services LIKE 'color'");
+    if (empty($column_exists)) {
+        $wpdb->query("ALTER TABLE $table_services ADD color varchar(20) DEFAULT NULL AFTER image_url");
+    }
+
     $service_id = isset($_POST['service_id']) ? intval($_POST['service_id']) : 0;
+    $allowed_colors = ['#a4bdfc', '#7ae7bf', '#dbadff', '#ff887c', '#fbd75b', '#ffb878', '#46d6db', '#e1e1e1', '#5484ed', '#51b749', '#dc2127'];
+    $color = isset($_POST['color']) ? sanitize_hex_color($_POST['color']) : '';
+    if (empty($color) || !in_array($color, $allowed_colors)) {
+        $color = '#5484ed';
+    }
+
     $data = [
         'name' => sanitize_text_field($_POST['name']),
         'description' => sanitize_textarea_field($_POST['description']),
         'duration' => intval($_POST['duration']),
         'price' => isset($_POST['price']) && $_POST['price'] !== '' ? floatval($_POST['price']) : null,
         'image_url' => esc_url_raw($_POST['image_url']),
+        'color' => $color,
         'is_active' => isset($_POST['is_active']) ? 1 : 0,
         'display_order' => intval($_POST['display_order']),
     ];
-    
+
     if ($service_id) {
-        $wpdb->update($table_services, $data, ['id' => $service_id]);
+        $result = $wpdb->update($table_services, $data, ['id' => $service_id]);
+        if ($result === false) {
+            error_log('IBS: Erreur update service - ' . $wpdb->last_error);
+        }
     } else {
-        $wpdb->insert($table_services, $data);
+        $result = $wpdb->insert($table_services, $data);
+        if ($result === false) {
+            error_log('IBS: Erreur insert service - ' . $wpdb->last_error);
+        }
         $service_id = $wpdb->insert_id;
     }
     
@@ -135,6 +154,37 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                             <p class="description">Une image représentative du service (recommandé: 800x600px minimum).</p>
                         </td>
                     </tr>
+
+                    <tr>
+                        <th scope="row"><label for="color">Couleur (agenda Google)</label></th>
+                        <td>
+                            <?php
+                            $google_colors = [
+                                '#a4bdfc' => 'Lavande',
+                                '#7ae7bf' => 'Sauge',
+                                '#dbadff' => 'Raisin',
+                                '#ff887c' => 'Flamant',
+                                '#fbd75b' => 'Banane',
+                                '#ffb878' => 'Mandarine',
+                                '#46d6db' => 'Paon',
+                                '#e1e1e1' => 'Graphite',
+                                '#5484ed' => 'Myrtille',
+                                '#51b749' => 'Basilic',
+                                '#dc2127' => 'Tomate',
+                            ];
+                            $current_color = $edit_mode && !empty($edit_service->color) ? $edit_service->color : '#5484ed';
+                            ?>
+                            <select name="color" id="color" style="min-width: 200px;">
+                                <?php foreach ($google_colors as $hex => $name): ?>
+                                    <option value="<?php echo esc_attr($hex); ?>" <?php selected($current_color, $hex); ?>>
+                                        <?php echo esc_html($name); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <span id="color-preview" style="display:inline-block;width:20px;height:20px;border-radius:3px;background:<?php echo esc_attr($current_color); ?>;border:1px solid #c3c4c7;vertical-align:middle;margin-left:8px;"></span>
+                            <p class="description">Couleur affichée pour ce service dans Google Agenda.</p>
+                        </td>
+                    </tr>
                     
                     <tr>
                         <th scope="row"><label for="display_order">Ordre d'affichage</label></th>
@@ -199,6 +249,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                             <th>Durée</th>
                             <th>Prix</th>
                             <th>Magasins</th>
+                            <th>Couleur</th>
                             <th>Ordre</th>
                             <th>Statut</th>
                             <th>Actions</th>
@@ -224,6 +275,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                                 <td><?php echo $service->duration; ?> min</td>
                                 <td><?php echo $service->price ? number_format($service->price, 2) . '€' : '-'; ?></td>
                                 <td><?php echo empty($service_stores) ? '-' : implode(', ', $service_stores); ?></td>
+                                <td>
+                                    <?php if (!empty($service->color)): ?>
+                                        <span style="display:inline-block;width:18px;height:18px;border-radius:3px;background:<?php echo esc_attr($service->color); ?>;border:1px solid #c3c4c7;"></span>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo $service->display_order; ?></td>
                                 <td>
                                     <?php if ($service->is_active): ?>
@@ -254,10 +312,10 @@ jQuery(document).ready(function($) {
     // Media Uploader
     $('.ibs-upload-image').on('click', function(e) {
         e.preventDefault();
-        
+
         var imageField = $('#image_url');
         var imagePreview = $('#image-preview');
-        
+
         var mediaUploader = wp.media({
             title: 'Choisir une image',
             button: {
@@ -265,14 +323,19 @@ jQuery(document).ready(function($) {
             },
             multiple: false
         });
-        
+
         mediaUploader.on('select', function() {
             var attachment = mediaUploader.state().get('selection').first().toJSON();
             imageField.val(attachment.url);
             imagePreview.html('<img src="' + attachment.url + '" style="max-width: 300px;">');
         });
-        
+
         mediaUploader.open();
+    });
+
+    // Color preview update
+    $('#color').on('change', function() {
+        $('#color-preview').css('background', $(this).val());
     });
 });
 </script>

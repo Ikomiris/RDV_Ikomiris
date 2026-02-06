@@ -375,6 +375,11 @@
                 e.preventDefault();
                 self.submitBooking();
             });
+
+            // Carte cadeau: afficher/masquer le code
+            $(document).on('change', '#ibs-has-gift-card', function() {
+                self.updateGiftCardState();
+            });
         },
 
         positionCalendar: function(instance) {
@@ -566,6 +571,25 @@
                 this.initDatePicker();
             } else if (section === 'form') {
                 $('#ibs-customer-form input, #ibs-customer-form textarea, #ibs-customer-form button').prop('disabled', false);
+                this.updateGiftCardState();
+            }
+        },
+
+        updateGiftCardState: function() {
+            const $checkbox = $('#ibs-has-gift-card');
+            const $codeWrapper = $('#ibs-gift-card-code-wrapper');
+            const $codeInput = $('#ibs-gift-card-code');
+
+            if (!$checkbox.length || !$codeWrapper.length || !$codeInput.length) {
+                return;
+            }
+
+            if ($checkbox.is(':checked')) {
+                $codeWrapper.show();
+                $codeInput.prop('required', true).prop('disabled', false);
+            } else {
+                $codeWrapper.hide();
+                $codeInput.prop('required', false).val('').prop('disabled', true);
             }
         },
 
@@ -787,6 +811,21 @@
             const $submitBtn = $form.find('.ibs-submit-btn');
 
             // Validation
+            if (!$('#ibs-age-confirm').is(':checked')) {
+                alert('Veuillez confirmer que toutes les personnes photographiées ont au moins 6 ans.');
+                return;
+            }
+
+            if (!$('#ibs-terms').is(':checked')) {
+                alert('Veuillez accepter les conditions générales d\'utilisation.');
+                return;
+            }
+
+            if ($('#ibs-has-gift-card').is(':checked') && !$('#ibs-gift-card-code').val().trim()) {
+                alert('Veuillez saisir le code de votre carte cadeau.');
+                return;
+            }
+
             if (!$form[0].checkValidity()) {
                 $form[0].reportValidity();
                 return;
@@ -807,7 +846,10 @@
                 email: $('#ibs-email').val(),
                 phone: $('#ibs-phone').val(),
                 message: $('#ibs-message').val(),
-                gift_card_code: $('#ibs-gift-card-code').val()
+                gift_card_code: $('#ibs-has-gift-card').is(':checked') ? $('#ibs-gift-card-code').val().trim() : '',
+                has_gift_card: $('#ibs-has-gift-card').is(':checked') ? '1' : '0',
+                age_confirm: $('#ibs-age-confirm').is(':checked') ? '1' : '0',
+                terms: $('#ibs-terms').is(':checked') ? '1' : '0'
             };
 
             $.ajax({
@@ -825,12 +867,12 @@
                         $('html, body').animate({ scrollTop: $('#ibs-booking-form').offset().top - 20 }, 500);
                     } else {
                         self.showError(response.data.message);
-                        $submitBtn.prop('disabled', false).text('Confirmer ma réservation');
+                        $submitBtn.prop('disabled', false).text('Confirmer Ma Réservation');
                     }
                 },
                 error: function() {
                     self.showError(ibsFrontend.strings.error);
-                    $submitBtn.prop('disabled', false).text('Confirmer ma réservation');
+                    $submitBtn.prop('disabled', false).text('Confirmer Ma Réservation');
                 }
             });
         },

@@ -257,7 +257,10 @@ class EmailHandler {
         $to = $booking->store_email;
 
         // Ajouter l'email admin WordPress si configuré
-        $admin_email = get_option('admin_email');
+        $admin_email = $this->get_email_setting('email_admin_address', '');
+        if (empty($admin_email)) {
+            $admin_email = get_option('admin_email');
+        }
         if ($admin_email && $admin_email !== $booking->store_email) {
             $headers[] = 'Cc: ' . $admin_email;
         }
@@ -678,7 +681,10 @@ class EmailHandler {
         $to = $booking->store_email;
 
         // Ajouter l'email admin WordPress si configuré
-        $admin_email = get_option('admin_email');
+        $admin_email = $this->get_email_setting('email_admin_address', '');
+        if (empty($admin_email)) {
+            $admin_email = get_option('admin_email');
+        }
         if ($admin_email && $admin_email !== $booking->store_email) {
             $headers[] = 'Cc: ' . $admin_email;
         }

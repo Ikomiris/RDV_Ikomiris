@@ -416,6 +416,9 @@ class BookingAPI {
         $phone = isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '';
         $message = isset($_POST['message']) ? sanitize_textarea_field($_POST['message']) : '';
         $gift_card_code = isset($_POST['gift_card_code']) ? sanitize_text_field($_POST['gift_card_code']) : '';
+        $has_gift_card = isset($_POST['has_gift_card']) ? sanitize_text_field($_POST['has_gift_card']) : '0';
+        $age_confirm = isset($_POST['age_confirm']) ? sanitize_text_field($_POST['age_confirm']) : '0';
+        $terms = isset($_POST['terms']) ? sanitize_text_field($_POST['terms']) : '0';
         if (!empty($gift_card_code)) {
             $gift_card_code = substr($gift_card_code, 0, 100);
         }
@@ -427,6 +430,18 @@ class BookingAPI {
 
         if (!is_email($email)) {
             wp_send_json_error(['message' => __('Email invalide', 'ikomiris-booking')]);
+        }
+
+        if ($age_confirm !== '1') {
+            wp_send_json_error(['message' => __('Veuillez confirmer que toutes les personnes photographiées ont au moins 6 ans.', 'ikomiris-booking')]);
+        }
+
+        if ($terms !== '1') {
+            wp_send_json_error(['message' => __('Veuillez accepter les conditions générales d\'utilisation.', 'ikomiris-booking')]);
+        }
+
+        if ($has_gift_card === '1' && empty($gift_card_code)) {
+            wp_send_json_error(['message' => __('Veuillez saisir le code de votre carte cadeau.', 'ikomiris-booking')]);
         }
 
         // Validation du délai minimum de réservation
@@ -506,7 +521,13 @@ class BookingAPI {
         
         // Envoyer les emails de confirmation
         $this->send_confirmation_emails($booking_id);
-        
+
+        // Envoyer les notifications WhatsApp
+        $this->send_whatsapp_notifications($booking_id);
+
+        // Envoyer les informations du client au CRM
+        $this->send_to_crm($store_id, $firstname, $lastname, $email, $phone);
+
         wp_send_json_success([
             'message' => __('Réservation confirmée !', 'ikomiris-booking'),
             'booking_id' => $booking_id
@@ -545,7 +566,7 @@ class BookingAPI {
 
         // Récupérer le nom du service
         $service = $wpdb->get_row($wpdb->prepare("
-            SELECT name FROM {$wpdb->prefix}ibs_services WHERE id = %d
+            SELECT name, color FROM {$wpdb->prefix}ibs_services WHERE id = %d
         ", $service_id));
 
         // Initialiser Google Calendar
@@ -582,23 +603,36 @@ class BookingAPI {
         $end_formatted = $end_datetime->format('Y-m-d\TH:i:s\Z');
 
         // Préparer les données de l'événement
+        $cancel_token = $wpdb->get_var($wpdb->prepare("
+            SELECT cancel_token FROM {$wpdb->prefix}ibs_bookings WHERE id = %d
+        ", $booking_id));
+        $cancel_url = $cancel_token ? home_url('/reservation-annulation/?token=' . $cancel_token) : '';
+        $cancel_line = $cancel_url ? "Lien d'annulation : " . $cancel_url . "\n" : '';
         $gift_card_line = $gift_card_code ? "Carte cadeau : " . $gift_card_code . "\n" : '';
         $message_block = $message ? "Message :\n" . $message : '';
 
         $event_data = [
-            'summary' => ($service ? $service->name : 'Réservation') . ' - ' . $firstname . ' ' . $lastname,
+            'summary' => $firstname . ' ' . $lastname . ' - ' . ($service ? $service->name : 'Réservation'),
             'description' =>
                 "Réservation Ikomiris Booking System\n\n" .
                 "Client : " . $firstname . " " . $lastname . "\n" .
                 "Email : " . $email . "\n" .
                 "Téléphone : " . $phone . "\n" .
                 $gift_card_line .
+                $cancel_line .
                 "Magasin : " . $store->name . "\n\n" .
                 $message_block,
             'start' => $start_formatted,
             'end' => $end_formatted,
         ];
-        
+
+        if ($service && !empty($service->color)) {
+            $event_data['color'] = $service->color;
+            error_log('IBS: Service #' . $service_id . ' couleur = ' . $service->color);
+        } else {
+            error_log('IBS: Service #' . $service_id . ' sans couleur définie (service=' . ($service ? 'trouvé' : 'null') . ', color=' . ($service ? $service->color : 'n/a') . ')');
+        }
+
         // Créer l'événement dans Google Calendar
         $event_id = $google->create_event($store->google_calendar_id, $event_data);
         
@@ -627,21 +661,81 @@ class BookingAPI {
     private function send_confirmation_emails($booking_id) {
         $email_handler = new \IBS\Email\EmailHandler();
 
+        $send_customer = $this->get_setting('email_customer_confirmation', '1') === '1';
+        $send_admin = $this->get_setting('email_admin_notification', '1') === '1';
+
         // Envoyer l'email au client
-        $customer_sent = $email_handler->send_customer_confirmation($booking_id);
+        $customer_sent = $send_customer ? $email_handler->send_customer_confirmation($booking_id) : null;
 
         // Envoyer l'email à l'admin du magasin
-        $admin_sent = $email_handler->send_admin_notification($booking_id);
+        $admin_sent = $send_admin ? $email_handler->send_admin_notification($booking_id) : null;
 
-        if ($customer_sent && $admin_sent) {
-            error_log('IBS: Emails de confirmation envoyés avec succès pour réservation #' . $booking_id);
+        if ($send_customer || $send_admin) {
+            $customer_ok = $send_customer ? $customer_sent : true;
+            $admin_ok = $send_admin ? $admin_sent : true;
+
+            if ($customer_ok && $admin_ok) {
+                error_log('IBS: Emails de confirmation envoyés avec succès pour réservation #' . $booking_id);
+            } else {
+                if ($send_customer && !$customer_sent) {
+                    error_log('IBS: Échec de l\'envoi de l\'email client pour réservation #' . $booking_id);
+                }
+                if ($send_admin && !$admin_sent) {
+                    error_log('IBS: Échec de l\'envoi de l\'email admin pour réservation #' . $booking_id);
+                }
+            }
+        }
+    }
+
+    /**
+     * Envoie les notifications WhatsApp via Twilio
+     *
+     * @param int $booking_id ID de la réservation
+     * @return void
+     */
+    private function send_whatsapp_notifications($booking_id) {
+        $whatsapp = new \IBS\Integrations\WhatsAppHandler();
+
+        if (!$whatsapp->is_configured()) {
+            return;
+        }
+
+        // Envoyer la confirmation WhatsApp au client
+        $sent = $whatsapp->send_customer_confirmation($booking_id);
+
+        if ($sent) {
+            error_log('IBS: Notification WhatsApp envoyée avec succès pour réservation #' . $booking_id);
         } else {
-            if (!$customer_sent) {
-                error_log('IBS: Échec de l\'envoi de l\'email client pour réservation #' . $booking_id);
-            }
-            if (!$admin_sent) {
-                error_log('IBS: Échec de l\'envoi de l\'email admin pour réservation #' . $booking_id);
-            }
+            error_log('IBS: Échec de l\'envoi de la notification WhatsApp pour réservation #' . $booking_id);
+        }
+    }
+
+    /**
+     * Envoie les informations du client au CRM
+     *
+     * @param int $store_id ID du magasin
+     * @param string $firstname Prénom du client
+     * @param string $lastname Nom du client
+     * @param string $email Email du client
+     * @param string $phone Téléphone du client
+     * @return void
+     */
+    private function send_to_crm($store_id, $firstname, $lastname, $email, $phone) {
+        $crm = new \IBS\Integrations\CRM();
+
+        $customer_data = [
+            'first_name' => $firstname,
+            'last_name' => $lastname,
+            'email' => $email,
+            'phone' => $phone
+        ];
+
+        $result = $crm->send_customer_to_crm($store_id, $customer_data);
+
+        if ($result) {
+            error_log('IBS: Client envoyé au CRM avec succès');
+        } else {
+            error_log('IBS: Le client n\'a pas été envoyé au CRM (non configuré ou erreur)');
         }
     }
     

@@ -43,6 +43,17 @@ class Installer {
         if (empty($column_exists)) {
             $wpdb->query("ALTER TABLE $table_stores ADD cancellation_hours int(11) DEFAULT 24 COMMENT 'Délai d annulation en heures' AFTER google_calendar_id");
         }
+
+        // Migration : Ajouter les colonnes CRM si elles n'existent pas
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_stores LIKE 'crm_api_url'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE $table_stores ADD crm_api_url varchar(500) AFTER cancellation_hours");
+        }
+
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_stores LIKE 'crm_tenant_id'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE $table_stores ADD crm_tenant_id varchar(255) AFTER crm_api_url");
+        }
         
         // Table des services
         $table_services = $wpdb->prefix . 'ibs_services';
@@ -53,6 +64,7 @@ class Installer {
             duration int(11) NOT NULL COMMENT 'Durée en minutes',
             price decimal(10,2) DEFAULT NULL,
             image_url varchar(500),
+            color varchar(20) DEFAULT NULL,
             is_active tinyint(1) DEFAULT 1,
             display_order int(11) DEFAULT 0,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
@@ -60,6 +72,12 @@ class Installer {
             PRIMARY KEY (id)
         ) $charset_collate;";
         dbDelta($sql_services);
+
+        // Migration : Ajouter la colonne color si elle n'existe pas
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_services LIKE 'color'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE $table_services ADD color varchar(20) DEFAULT NULL AFTER image_url");
+        }
         
         // Table de liaison services-magasins
         $table_store_services = $wpdb->prefix . 'ibs_store_services';
@@ -237,6 +255,18 @@ class Installer {
             'email_admin_cancellation_title' => 'Annulation de réservation',
             'email_admin_cancellation_intro_text' => 'Une réservation vient d\'être annulée par le client.',
             'email_admin_cancellation_footer_text' => 'Notification automatique du système de réservation Ikomiris',
+
+            // WhatsApp / Twilio settings
+            'whatsapp_enabled' => '0',
+            'twilio_account_sid' => '',
+            'twilio_auth_token' => '',
+            'twilio_whatsapp_number' => '',
+            'whatsapp_customer_confirmation' => '1',
+            'whatsapp_customer_cancellation' => '1',
+            'whatsapp_customer_reminder' => '1',
+            'whatsapp_confirmation_template' => "Bonjour {customer_firstname},\n\nVotre réservation a été confirmée !\n\nService : {service_name}\nDate : {booking_date}\nHeure : {booking_time}\nLieu : {store_name}\n{store_address}\n\nÀ bientôt !",
+            'whatsapp_cancellation_template' => "Bonjour {customer_firstname},\n\nVotre réservation a bien été annulée.\n\nService : {service_name}\nDate : {booking_date}\nHeure : {booking_time}\n\nNous espérons vous revoir bientôt !",
+            'whatsapp_reminder_template' => "Bonjour {customer_firstname},\n\nRappel : vous avez un rendez-vous demain !\n\nService : {service_name}\nDate : {booking_date}\nHeure : {booking_time}\nLieu : {store_name}\n{store_address}\n\nÀ demain !",
         ];
         
         foreach ($default_settings as $key => $value) {

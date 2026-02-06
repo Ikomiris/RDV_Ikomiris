@@ -15,6 +15,23 @@ if (empty($column_exists)) {
     }
 }
 
+// Assurer la présence des colonnes CRM (installations existantes)
+$crm_url_exists = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'crm_api_url'");
+if (empty($crm_url_exists)) {
+    $altered = $wpdb->query("ALTER TABLE $table ADD crm_api_url varchar(500) AFTER cancellation_hours");
+    if ($altered === false) {
+        echo '<div class="notice notice-error"><p><strong>Erreur :</strong> Impossible d\'ajouter la colonne CRM API URL. Détails : ' . esc_html($wpdb->last_error) . '</p></div>';
+    }
+}
+
+$crm_tenant_exists = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'crm_tenant_id'");
+if (empty($crm_tenant_exists)) {
+    $altered = $wpdb->query("ALTER TABLE $table ADD crm_tenant_id varchar(255) AFTER crm_api_url");
+    if ($altered === false) {
+        echo '<div class="notice notice-error"><p><strong>Erreur :</strong> Impossible d\'ajouter la colonne CRM Tenant ID. Détails : ' . esc_html($wpdb->last_error) . '</p></div>';
+    }
+}
+
 // Traitement des actions
 if (isset($_POST['ibs_save_store'])) {
     check_admin_referer('ibs_save_store_nonce');
@@ -29,6 +46,8 @@ if (isset($_POST['ibs_save_store'])) {
         'image_url' => esc_url_raw($_POST['image_url']),
         'google_calendar_id' => sanitize_text_field($_POST['google_calendar_id']),
         'cancellation_hours' => intval($_POST['cancellation_hours']),
+        'crm_api_url' => esc_url_raw($_POST['crm_api_url']),
+        'crm_tenant_id' => sanitize_text_field($_POST['crm_tenant_id']),
         'is_active' => isset($_POST['is_active']) ? 1 : 0,
     ];
     
@@ -175,10 +194,42 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                     </tr>
 
                     <tr>
+                        <th scope="row"><label for="crm_api_url">URL API CRM</label></th>
+                        <td>
+                            <input type="url" name="crm_api_url" id="crm_api_url" class="large-text"
+                                   value="<?php echo $edit_mode ? esc_url($edit_store->crm_api_url) : ''; ?>"
+                                   placeholder="https://votre-crm.com/api/create-customer">
+                            <p class="description">
+                                <strong>🔗 URL de l'API pour créer un compte client dans votre CRM</strong><br>
+                                <br>
+                                L'API sera appelée automatiquement à chaque nouvelle réservation.<br>
+                                <br>
+                                <strong>⚠️ Important :</strong> Si vous laissez vide, les clients ne seront pas envoyés au CRM.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row"><label for="crm_tenant_id">Tenant ID CRM</label></th>
+                        <td>
+                            <input type="text" name="crm_tenant_id" id="crm_tenant_id" class="regular-text"
+                                   value="<?php echo $edit_mode ? esc_attr($edit_store->crm_tenant_id) : ''; ?>"
+                                   placeholder="votre-tenant-id">
+                            <p class="description">
+                                <strong>🔑 Identifiant unique de votre tenant dans le CRM</strong><br>
+                                <br>
+                                Cet identifiant permet au CRM de savoir à quel compte associer le client.<br>
+                                <br>
+                                <strong>💡 Conseil :</strong> Contactez votre administrateur CRM pour obtenir votre Tenant ID.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <tr>
                         <th scope="row">Actif</th>
                         <td>
                             <label>
-                                <input type="checkbox" name="is_active" value="1" 
+                                <input type="checkbox" name="is_active" value="1"
                                        <?php checked($edit_mode ? $edit_store->is_active : 1, 1); ?>>
                                 Magasin actif et visible pour les clients
                             </label>

@@ -61,55 +61,75 @@
         <div class="ibs-booking-summary" id="ibs-booking-summary" style="display: none;"></div>
 
         <form id="ibs-customer-form" class="ibs-form">
-            <div class="ibs-form-row">
-                <div class="ibs-form-group">
-                    <label for="ibs-firstname"><?php _e('Prénom', 'ikomiris-booking'); ?> *</label>
-                    <input type="text" id="ibs-firstname" name="firstname" required disabled>
+            <div class="ibs-card-section card-section">
+                <div class="ibs-card-header">
+                    <span class="ibs-section-icon">👤</span>
+                    <h3><?php _e('Vos coordonnées', 'ikomiris-booking'); ?></h3>
                 </div>
-                <div class="ibs-form-group">
-                    <label for="ibs-lastname"><?php _e('Nom', 'ikomiris-booking'); ?> *</label>
-                    <input type="text" id="ibs-lastname" name="lastname" required disabled>
+                <div class="ibs-grid-2">
+                    <div class="ibs-form-group">
+                        <label for="ibs-firstname"><?php _e('Prénom', 'ikomiris-booking'); ?> <span class="ibs-required">*</span></label>
+                        <input type="text" id="ibs-firstname" name="prenom" required disabled>
+                    </div>
+                    <div class="ibs-form-group">
+                        <label for="ibs-lastname"><?php _e('Nom', 'ikomiris-booking'); ?> <span class="ibs-required">*</span></label>
+                        <input type="text" id="ibs-lastname" name="nom" required disabled>
+                    </div>
+                    <div class="ibs-form-group">
+                        <label for="ibs-email"><?php _e('Email', 'ikomiris-booking'); ?> <span class="ibs-required">*</span></label>
+                        <input type="email" id="ibs-email" name="email" required disabled>
+                    </div>
+                    <div class="ibs-form-group">
+                        <label for="ibs-phone"><?php _e('Téléphone', 'ikomiris-booking'); ?> <span class="ibs-required">*</span></label>
+                        <input type="tel" id="ibs-phone" name="telephone" required disabled>
+                    </div>
                 </div>
             </div>
 
-            <div class="ibs-form-row">
-                <div class="ibs-form-group">
-                    <label for="ibs-email"><?php _e('Email', 'ikomiris-booking'); ?> *</label>
-                    <input type="email" id="ibs-email" name="email" required disabled>
-                </div>
-                <div class="ibs-form-group">
-                    <label for="ibs-phone"><?php _e('Téléphone', 'ikomiris-booking'); ?> *</label>
-                    <input type="tel" id="ibs-phone" name="phone" required disabled>
+            <div class="ibs-card-section card-section">
+                <label class="ibs-gift-card-toggle" for="ibs-has-gift-card">
+                    <input type="checkbox" id="ibs-has-gift-card" name="hasGiftCard" disabled>
+                    <?php _e("🎁 J'ai une carte cadeau", 'ikomiris-booking'); ?>
+                </label>
+                <div class="ibs-form-group ibs-gift-card-code-wrapper" id="ibs-gift-card-code-wrapper" style="display: none;">
+                    <label for="ibs-gift-card-code"><?php _e('Code de la carte cadeau', 'ikomiris-booking'); ?></label>
+                    <input type="text" id="ibs-gift-card-code" name="giftCardCode" class="ibs-gift-card-code-input" placeholder="<?php _e('Entrez votre code', 'ikomiris-booking'); ?>" autocomplete="off" disabled>
                 </div>
             </div>
 
-            <div class="ibs-form-row ibs-gift-card-row">
-                <div class="ibs-form-group">
-                    <label class="ibs-gift-card-label" for="ibs-gift-card-enabled">
-                        <input type="checkbox" id="ibs-gift-card-enabled" name="gift_card_enabled" disabled>
-                        <?php _e("J'ai une carte cadeau", 'ikomiris-booking'); ?>
+            <div class="ibs-card-section card-section">
+                <div class="ibs-card-header">
+                    <span class="ibs-section-icon">👨‍👩‍👧</span>
+                    <h3><?php _e("Confirmation d'âge", 'ikomiris-booking'); ?></h3>
+                </div>
+                <div class="ibs-age-box">
+                    <label class="ibs-checkbox-inline" for="ibs-age-confirm">
+                        <input type="checkbox" id="ibs-age-confirm" name="ageConfirm" required disabled>
+                        <?php _e('Je confirme que toutes les personnes photographiées ont au moins 6 ans', 'ikomiris-booking'); ?> <span class="ibs-required">*</span>
                     </label>
                 </div>
+            </div>
+
+            <div class="ibs-card-section card-section">
+                <div class="ibs-card-header">
+                    <span class="ibs-section-icon">💬</span>
+                    <h3><?php _e('Message complémentaire', 'ikomiris-booking'); ?></h3>
+                </div>
                 <div class="ibs-form-group">
-                    <label for="ibs-gift-card-code"><?php _e('Code', 'ikomiris-booking'); ?></label>
-                    <input type="text" id="ibs-gift-card-code" name="gift_card_code" class="ibs-gift-card-code-input" autocomplete="off" disabled>
+                    <label for="ibs-message"><?php _e('Message (optionnel)', 'ikomiris-booking'); ?></label>
+                    <textarea id="ibs-message" name="message" rows="4" placeholder="<?php _e('Des précisions à nous transmettre ?', 'ikomiris-booking'); ?>" disabled></textarea>
                 </div>
             </div>
 
-            <div class="ibs-form-group">
-                <label for="ibs-message"><?php _e('Message (optionnel)', 'ikomiris-booking'); ?></label>
-                <textarea id="ibs-message" name="message" rows="4" disabled></textarea>
-            </div>
-
-            <div class="ibs-form-group ibs-checkbox-group">
-                <label>
-                    <input type="checkbox" id="ibs-terms" name="terms" required disabled>
-                    <?php _e("J'accepte les conditions générales", 'ikomiris-booking'); ?> *
+            <div class="ibs-terms-box terms-checkbox">
+                <input type="checkbox" id="ibs-terms" name="terms" required disabled>
+                <label for="ibs-terms">
+                    <?php _e("J'accepte les conditions générales d'utilisation", 'ikomiris-booking'); ?> <span class="ibs-required">*</span>
                 </label>
             </div>
 
-            <button type="submit" class="ibs-submit-btn" disabled>
-                <?php _e('Confirmer ma réservation', 'ikomiris-booking'); ?>
+            <button type="submit" class="ibs-submit-btn btn-submit" disabled>
+                <?php _e('Confirmer Ma Réservation', 'ikomiris-booking'); ?>
             </button>
         </form>
     </div>

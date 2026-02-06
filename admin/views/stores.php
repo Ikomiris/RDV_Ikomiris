@@ -28,6 +28,7 @@ if (isset($_POST['ibs_save_store'])) {
         'description' => sanitize_textarea_field($_POST['description']),
         'image_url' => esc_url_raw($_POST['image_url']),
         'google_calendar_id' => sanitize_text_field($_POST['google_calendar_id']),
+        'cancellation_hours' => intval($_POST['cancellation_hours']),
         'is_active' => isset($_POST['is_active']) ? 1 : 0,
     ];
     
@@ -129,15 +130,50 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                     <tr>
                         <th scope="row"><label for="google_calendar_id">ID Google Calendar</label></th>
                         <td>
-                            <input type="text" name="google_calendar_id" id="google_calendar_id" class="regular-text" 
-                                   value="<?php echo $edit_mode ? esc_attr($edit_store->google_calendar_id) : ''; ?>">
+                            <input type="text" name="google_calendar_id" id="google_calendar_id" class="large-text"
+                                   value="<?php echo $edit_mode ? esc_attr($edit_store->google_calendar_id) : ''; ?>"
+                                   placeholder="votre.email@gmail.com ou c_xxxxxxxxx@group.calendar.google.com">
                             <p class="description">
-                                L'ID du calendrier Google associé à ce magasin (ex: exemple@group.calendar.google.com)<br>
-                                <a href="https://support.google.com/calendar/answer/37103" target="_blank">Comment trouver mon Calendar ID ?</a>
+                                <strong>🔑 L'ID du calendrier Google spécifique à ce magasin</strong><br>
+                                <br>
+                                <strong>Format attendu :</strong><br>
+                                • Calendrier principal : <code>votre.email@gmail.com</code><br>
+                                • Calendrier secondaire : <code>c_xxxxxxxxx@group.calendar.google.com</code><br>
+                                <br>
+                                <strong>📍 Comment le trouver :</strong><br>
+                                1. Ouvrez <a href="https://calendar.google.com" target="_blank">Google Calendar</a><br>
+                                2. Cliquez sur <strong>⋮</strong> (3 points) à côté du calendrier souhaité<br>
+                                3. Cliquez sur <strong>"Paramètres et partage"</strong><br>
+                                4. Copiez <strong>"ID de l'agenda"</strong> dans la section "Intégrer l'agenda"<br>
+                                <br>
+                                <strong>⚠️ Important :</strong> Un ID différent = un calendrier différent.<br>
+                                Si vous laissez vide, aucune synchronisation Google Calendar pour ce magasin.
                             </p>
                         </td>
                     </tr>
-                    
+
+                    <tr>
+                        <th scope="row"><label for="cancellation_hours">Délai d'annulation (heures)</label></th>
+                        <td>
+                            <input type="number" name="cancellation_hours" id="cancellation_hours"
+                                   class="small-text" min="1" max="168" step="1"
+                                   value="<?php echo $edit_mode && isset($edit_store->cancellation_hours) ? intval($edit_store->cancellation_hours) : 24; ?>">
+                            heures avant le rendez-vous
+                            <p class="description">
+                                <strong>⏰ Délai minimum pour annuler une réservation</strong><br>
+                                <br>
+                                Les clients pourront annuler leur réservation jusqu'à ce délai avant l'heure du rendez-vous.<br>
+                                <br>
+                                <strong>Exemples :</strong><br>
+                                • <strong>24 heures</strong> (recommandé) : Le client peut annuler jusqu'à la veille du rendez-vous<br>
+                                • <strong>48 heures</strong> : Annulation possible jusqu'à 2 jours avant<br>
+                                • <strong>2 heures</strong> : Annulation possible jusqu'à 2h avant le rendez-vous<br>
+                                <br>
+                                <strong>💡 Conseil :</strong> Un délai de 24h est un bon compromis entre flexibilité client et gestion du planning.
+                            </p>
+                        </td>
+                    </tr>
+
                     <tr>
                         <th scope="row">Actif</th>
                         <td>
@@ -169,13 +205,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                 <table class="wp-list-table widefat fixed striped">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Nom</th>
-                            <th>Adresse</th>
-                            <th>Téléphone</th>
-                            <th>Email</th>
-                            <th>Statut</th>
-                            <th>Actions</th>
+                            <th style="width: 5%;">ID</th>
+                            <th style="width: 15%;">Nom</th>
+                            <th style="width: 15%;">Adresse</th>
+                            <th style="width: 10%;">Téléphone</th>
+                            <th style="width: 10%;">Email</th>
+                            <th style="width: 20%;">Google Calendar</th>
+                            <th style="width: 10%;">Statut</th>
+                            <th style="width: 15%;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -187,6 +224,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                                 <td><?php echo esc_html($store->phone); ?></td>
                                 <td><?php echo esc_html($store->email); ?></td>
                                 <td>
+                                    <?php if (!empty($store->google_calendar_id)): ?>
+                                        <span style="color: #46b450;">✓ Configuré</span><br>
+                                        <code style="font-size: 11px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo esc_attr($store->google_calendar_id); ?>">
+                                            <?php echo esc_html($store->google_calendar_id); ?>
+                                        </code>
+                                    <?php else: ?>
+                                        <span style="color: #dc3232;">✗ Non configuré</span><br>
+                                        <small>Pas de synchro Google</small>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
                                     <?php if ($store->is_active): ?>
                                         <span class="ibs-status-active">Actif</span>
                                     <?php else: ?>
@@ -194,9 +242,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) 
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="?page=ikomiris-booking-stores&action=edit&id=<?php echo $store->id; ?>" 
+                                    <a href="?page=ikomiris-booking-stores&action=edit&id=<?php echo $store->id; ?>"
                                        class="button button-small">Modifier</a>
-                                    <a href="?page=ikomiris-booking-stores&action=delete&id=<?php echo $store->id; ?>&_wpnonce=<?php echo wp_create_nonce('ibs_delete_store_' . $store->id); ?>" 
+                                    <a href="?page=ikomiris-booking-stores&action=delete&id=<?php echo $store->id; ?>&_wpnonce=<?php echo wp_create_nonce('ibs_delete_store_' . $store->id); ?>"
                                        class="button button-small button-link-delete"
                                        onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce magasin ?');">Supprimer</a>
                                 </td>

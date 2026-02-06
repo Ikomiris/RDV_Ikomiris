@@ -48,6 +48,18 @@ $stores = $wpdb->get_results("SELECT id, name FROM $table_stores ORDER BY name A
 <div class="wrap">
     <h1 class="wp-heading-inline">Réservations</h1>
     <hr class="wp-header-end">
+
+    <?php if (isset($_GET['ibs_booking_deleted'])): ?>
+        <?php if ((int) $_GET['ibs_booking_deleted'] === 1): ?>
+            <div class="notice notice-success is-dismissible">
+                <p>Réservation supprimée.</p>
+            </div>
+        <?php else: ?>
+            <div class="notice notice-error is-dismissible">
+                <p>Impossible de supprimer la réservation.</p>
+            </div>
+        <?php endif; ?>
+    <?php endif; ?>
     
     <!-- Filtres -->
     <div class="ibs-filters" style="background: #fff; padding: 20px; margin: 20px 0; border: 1px solid #ccc; border-radius: 4px;">
@@ -128,6 +140,9 @@ $stores = $wpdb->get_results("SELECT id, name FROM $table_stores ORDER BY name A
                                 <?php if ($booking->customer_message): ?>
                                     <br><small title="<?php echo esc_attr($booking->customer_message); ?>">💬 Message</small>
                                 <?php endif; ?>
+                                <?php if (!empty($booking->customer_gift_card_code)): ?>
+                                    <br><small title="<?php echo esc_attr($booking->customer_gift_card_code); ?>">🎁 Carte cadeau</small>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <?php echo esc_html($booking->customer_email); ?><br>
@@ -154,9 +169,27 @@ $stores = $wpdb->get_results("SELECT id, name FROM $table_stores ORDER BY name A
                                 <span class="<?php echo $status_classes[$booking->status] ?? ''; ?>">
                                     <?php echo $status_labels[$booking->status] ?? $booking->status; ?>
                                 </span>
+                                <?php if ($booking->status === 'cancelled' && !empty($booking->cancelled_at)): ?>
+                                    <br><small style="color: #666;">
+                                        <?php echo date('d/m/Y H:i', strtotime($booking->cancelled_at)); ?>
+                                    </small>
+                                <?php endif; ?>
                             </td>
                             <td>
+                                <?php
+                                $delete_url = wp_nonce_url(
+                                    add_query_arg(
+                                        [
+                                            'action' => 'ibs_delete_booking',
+                                            'booking_id' => $booking->id
+                                        ],
+                                        admin_url('admin-post.php')
+                                    ),
+                                    'ibs_delete_booking_' . $booking->id
+                                );
+                                ?>
                                 <button class="button button-small" onclick="alert('Détails: ID <?php echo $booking->id; ?>')">Détails</button>
+                                <a class="button button-small button-link-delete" href="<?php echo esc_url($delete_url); ?>">Supprimer</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

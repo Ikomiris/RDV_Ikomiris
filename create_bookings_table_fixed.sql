@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `wp_ibs_bookings` (
     `customer_email` varchar(100) NOT NULL,
     `customer_phone` varchar(50) NOT NULL,
     `customer_message` text,
+    `customer_gift_card_code` varchar(100),
     `status` varchar(20) DEFAULT 'pending' COMMENT 'pending, confirmed, cancelled, completed',
     `cancel_token` varchar(64),
     `google_event_id` varchar(255),

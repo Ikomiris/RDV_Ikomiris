@@ -37,6 +37,12 @@ class Installer {
         if (empty($column_exists)) {
             $wpdb->query("ALTER TABLE $table_stores ADD google_calendar_id varchar(255) AFTER image_url");
         }
+
+        // Migration : Ajouter la colonne cancellation_hours si elle n'existe pas
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_stores LIKE 'cancellation_hours'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE $table_stores ADD cancellation_hours int(11) DEFAULT 24 COMMENT 'Délai d annulation en heures' AFTER google_calendar_id");
+        }
         
         // Table des services
         $table_services = $wpdb->prefix . 'ibs_services';
@@ -113,6 +119,7 @@ class Installer {
             customer_email varchar(100) NOT NULL,
             customer_phone varchar(50) NOT NULL,
             customer_message text,
+            customer_gift_card_code varchar(100),
             status varchar(20) DEFAULT 'pending' COMMENT 'pending, confirmed, cancelled, completed',
             cancel_token varchar(64) UNIQUE,
             google_event_id varchar(255),
@@ -126,7 +133,19 @@ class Installer {
             KEY cancel_token (cancel_token)
         ) $charset_collate;";
         dbDelta($sql_bookings);
-        
+
+        // Migration : Ajouter la colonne customer_gift_card_code si elle n'existe pas
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_bookings LIKE 'customer_gift_card_code'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE $table_bookings ADD customer_gift_card_code varchar(100) AFTER customer_message");
+        }
+
+        // Migration : Ajouter la colonne cancelled_at si elle n'existe pas
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table_bookings LIKE 'cancelled_at'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE $table_bookings ADD cancelled_at datetime DEFAULT NULL AFTER google_event_id");
+        }
+
         // Table des paramètres
         $table_settings = $wpdb->prefix . 'ibs_settings';
         $sql_settings = "CREATE TABLE $table_settings (
@@ -170,6 +189,54 @@ class Installer {
             'email_customer_confirmation' => '1',
             'email_customer_reminder' => '1',
             'email_reminder_hours' => '24',
+
+            // Email customization - Logo global
+            'email_global_logo_url' => '',
+
+            // Email customization - Customer confirmation
+            'email_customer_confirmation_header_color' => '#3498db',
+            'email_customer_confirmation_button_color' => '#e74c3c',
+            'email_customer_confirmation_background_color' => '#f9f9f9',
+            'email_customer_confirmation_text_color' => '#333333',
+            'email_customer_confirmation_title' => 'Confirmation de réservation',
+            'email_customer_confirmation_intro_text' => 'Votre réservation a été confirmée avec succès !',
+            'email_customer_confirmation_footer_text' => 'Cet email a été envoyé automatiquement, merci de ne pas y répondre.',
+
+            // Email customization - Admin notification
+            'email_admin_notification_header_color' => '#27ae60',
+            'email_admin_notification_button_color' => '#3498db',
+            'email_admin_notification_background_color' => '#f9f9f9',
+            'email_admin_notification_text_color' => '#333333',
+            'email_admin_notification_title' => 'Nouvelle réservation reçue',
+            'email_admin_notification_intro_text' => 'Une nouvelle réservation vient d\'être effectuée sur votre site.',
+            'email_admin_notification_footer_text' => 'Notification automatique du système de réservation Ikomiris',
+
+            // Email customization - Reminder
+            'email_reminder_header_color' => '#f39c12',
+            'email_reminder_button_color' => '#3498db',
+            'email_reminder_background_color' => '#f9f9f9',
+            'email_reminder_text_color' => '#333333',
+            'email_reminder_title' => 'Rappel de rendez-vous',
+            'email_reminder_intro_text' => 'Nous vous rappelons que vous avez un rendez-vous demain.',
+            'email_reminder_footer_text' => 'Nous vous attendons avec plaisir !',
+
+            // Email customization - Customer cancellation
+            'email_customer_cancellation_header_color' => '#e74c3c',
+            'email_customer_cancellation_button_color' => '#3498db',
+            'email_customer_cancellation_background_color' => '#f9f9f9',
+            'email_customer_cancellation_text_color' => '#333333',
+            'email_customer_cancellation_title' => 'Confirmation d\'annulation',
+            'email_customer_cancellation_intro_text' => 'Votre réservation a bien été annulée.',
+            'email_customer_cancellation_footer_text' => 'Nous espérons vous revoir bientôt !',
+
+            // Email customization - Admin cancellation
+            'email_admin_cancellation_header_color' => '#e67e22',
+            'email_admin_cancellation_button_color' => '#3498db',
+            'email_admin_cancellation_background_color' => '#f9f9f9',
+            'email_admin_cancellation_text_color' => '#333333',
+            'email_admin_cancellation_title' => 'Annulation de réservation',
+            'email_admin_cancellation_intro_text' => 'Une réservation vient d\'être annulée par le client.',
+            'email_admin_cancellation_footer_text' => 'Notification automatique du système de réservation Ikomiris',
         ];
         
         foreach ($default_settings as $key => $value) {
@@ -185,16 +252,36 @@ class Installer {
     }
     
     private static function create_default_page() {
+        // Page de réservation
         $page_title = 'Réservation';
         $page_content = '<!-- wp:shortcode -->[ikomiris_booking]<!-- /wp:shortcode -->';
-        
+
         // Vérifier si la page existe déjà
         $page = get_page_by_title($page_title);
-        
+
         if (!$page) {
             wp_insert_post([
                 'post_title' => $page_title,
                 'post_content' => $page_content,
+                'post_status' => 'publish',
+                'post_type' => 'page',
+                'comment_status' => 'closed',
+                'ping_status' => 'closed'
+            ]);
+        }
+
+        // Page d'annulation
+        $cancel_page_title = 'Annulation de réservation';
+        $cancel_page_slug = 'reservation-annulation';
+
+        // Vérifier si la page existe déjà
+        $cancel_page = get_page_by_path($cancel_page_slug);
+
+        if (!$cancel_page) {
+            wp_insert_post([
+                'post_title' => $cancel_page_title,
+                'post_name' => $cancel_page_slug,
+                'post_content' => '<p>Cette page permet aux clients d\'annuler leurs réservations via le lien reçu par email.</p>',
                 'post_status' => 'publish',
                 'post_type' => 'page',
                 'comment_status' => 'closed',

@@ -1,0 +1,35 @@
+# Composer
+/vendor/
+composer.lock
+
+# PHPUnit
+/tests/coverage/
+.phpunit.result.cache
+
+# WordPress
+/wordpress/
+/wordpress-tests-lib/
+
+# IDE
+/.vscode/
+/.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/wp-content/ibs-booking-debug.log
+
+# Temp files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Node (si utilisé à l'avenir)
+/node_modules/
+package-lock.json

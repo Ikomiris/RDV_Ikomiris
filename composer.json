@@ -1,0 +1,38 @@
+{
+    "name": "ikomiris/booking-system",
+    "description": "Système de réservation de rendez-vous multi-magasins avec gestion des services et intégration Google Agenda",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Ikomiris",
+            "email": "contact@ikomiris.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5",
+        "yoast/phpunit-polyfills": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "IBS\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "IBS\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html tests/coverage"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}

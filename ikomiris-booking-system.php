@@ -83,6 +83,7 @@ final class Ikomiris_Booking_System {
         new IBS\Admin\Assets();
         new IBS\Frontend\Shortcode();
         new IBS\Frontend\Assets();
+        new IBS\Frontend\CancellationHandler();
         new IBS\API\BookingAPI();
     }
 }

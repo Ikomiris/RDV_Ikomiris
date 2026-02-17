@@ -9,9 +9,32 @@
         flatpickrInstance: null,
 
         init: function() {
-            this.loadStores();
+            const self = this;
             this.bindEvents();
             this.initDatePicker();
+            // Refresh nonce first (may be stale due to page caching), then load stores
+            this.refreshNonce(function() {
+                self.loadStores();
+            });
+        },
+
+        refreshNonce: function(callback) {
+            $.ajax({
+                url: ibsFrontend.ajaxUrl,
+                type: 'POST',
+                data: { action: 'ibs_refresh_nonce' },
+                success: function(response) {
+                    if (response.success && response.data && response.data.nonce) {
+                        ibsFrontend.nonce = response.data.nonce;
+                        console.log('IBS: Nonce rafraîchi');
+                    }
+                    if (callback) callback();
+                },
+                error: function() {
+                    console.warn('IBS: Impossible de rafraîchir le nonce, utilisation du nonce existant');
+                    if (callback) callback();
+                }
+            });
         },
 
         initDatePicker: function() {
@@ -36,13 +59,13 @@
             }
 
             // Calculer les dates min et max
-            const minBookingDelay = ibsFrontend.settings.minBookingDelay || 2;
             const maxBookingDelay = ibsFrontend.settings.maxBookingDelay || 90;
-            
+
             const today = new Date();
+            // Permettre la réservation pour aujourd'hui - le backend filtre
+            // les créneaux horaires selon le délai minimum (en heures)
             const minDate = new Date(today);
-            minDate.setDate(today.getDate() + Math.ceil(minBookingDelay / 24));
-            
+
             const maxDate = new Date(today);
             maxDate.setDate(today.getDate() + maxBookingDelay);
 
@@ -616,10 +639,12 @@
                     if (response.success) {
                         self.renderStores(response.data);
                     } else {
-                        self.showError(response.data.message);
+                        console.error('IBS loadStores: server error', response);
+                        self.showError(response.data && response.data.message ? response.data.message : ibsFrontend.strings.error);
                     }
                 },
-                error: function() {
+                error: function(xhr, status, error) {
+                    console.error('IBS loadStores: AJAX error', {status: xhr.status, statusText: xhr.statusText, responseText: xhr.responseText, error: error});
                     self.showError(ibsFrontend.strings.error);
                 }
             });
@@ -683,7 +708,8 @@
                         self.showError(response.data.message);
                     }
                 },
-                error: function() {
+                error: function(xhr, status, error) {
+                    console.error('IBS loadServices: AJAX error', {status: xhr.status, responseText: xhr.responseText, error: error});
                     self.showError(ibsFrontend.strings.error);
                 }
             });
@@ -743,7 +769,8 @@
                         self.showError(response.data.message);
                     }
                 },
-                error: function() {
+                error: function(xhr, status, error) {
+                    console.error('IBS loadAvailableSlots: AJAX error', {status: xhr.status, responseText: xhr.responseText, error: error});
                     self.showError(ibsFrontend.strings.error);
                 }
             });

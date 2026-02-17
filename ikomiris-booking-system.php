@@ -3,7 +3,7 @@
  * Plugin Name: Ikomiris Booking System
  * Plugin URI: https://ikomiris.com
  * Description: Système de réservation de rendez-vous multi-magasins avec gestion des services et intégration Google Agenda
- * Version: 1.0.0
+ * Version: 1.0.2
  * Author: Ikomiris
  * Author URI: https://ikomiris.com
  * Text Domain: ikomiris-booking
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Définir les constantes du plugin
-define('IBS_VERSION', '1.0.0');
+define('IBS_VERSION', '1.0.2');
 define('IBS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('IBS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('IBS_PLUGIN_BASENAME', plugin_basename(__FILE__));

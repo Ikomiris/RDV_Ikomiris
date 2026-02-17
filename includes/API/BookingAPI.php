@@ -9,6 +9,9 @@ class BookingAPI {
     
     public function __construct() {
         // Actions AJAX pour les utilisateurs connectés et non connectés
+        add_action('wp_ajax_ibs_refresh_nonce', [$this, 'refresh_nonce']);
+        add_action('wp_ajax_nopriv_ibs_refresh_nonce', [$this, 'refresh_nonce']);
+
         add_action('wp_ajax_ibs_get_stores', [$this, 'get_stores']);
         add_action('wp_ajax_nopriv_ibs_get_stores', [$this, 'get_stores']);
         
@@ -36,6 +39,12 @@ class BookingAPI {
         add_action('wp_ajax_ibs_admin_update_booking_status', [$this, 'admin_update_booking_status']);
     }
     
+    public function refresh_nonce() {
+        wp_send_json_success([
+            'nonce' => wp_create_nonce('ibs_frontend_nonce')
+        ]);
+    }
+
     public function get_stores() {
         check_ajax_referer('ibs_frontend_nonce', 'nonce');
         
@@ -96,7 +105,7 @@ class BookingAPI {
         $duration = intval($service->duration);
 
         // Récupérer les horaires du magasin pour ce jour
-        $day_of_week = date('w', strtotime($date)); // 0 = dimanche, 6 = samedi
+        $day_of_week = date('w', strtotime($date));
 
         $schedules = $wpdb->get_results($wpdb->prepare("
             SELECT time_start, time_end
@@ -118,7 +127,6 @@ class BookingAPI {
             if ($exception->exception_type === 'closed') {
                 wp_send_json_success([]);
             } else {
-                // Ouverture exceptionnelle
                 $schedules = [(object)[
                     'time_start' => $exception->time_start,
                     'time_end' => $exception->time_end
@@ -139,14 +147,18 @@ class BookingAPI {
         // Fusionner les réservations WordPress et Google Calendar
         $all_bookings = array_merge($bookings, $google_bookings);
 
-        // Générer les créneaux disponibles (avec filtre min_booking_delay)
-        $slots = $this->generate_slots($schedules, $duration, $all_bookings, $date);
+        // Générer les créneaux disponibles
+        $slots = $this->generate_available_slots($schedules, $duration, $all_bookings, $date);
 
         wp_send_json_success($slots);
     }
-    
-    private function generate_slots($schedules, $duration, $bookings, $date = null) {
+
+    /**
+     * Génère tous les créneaux disponibles en tenant compte des réservations
+     */
+    private function generate_available_slots($schedules, $duration, $bookings, $date = null) {
         $slots = [];
+        $slot_interval = 10; // Intervalle en minutes entre chaque créneau
 
         // Récupérer le délai minimum de réservation
         $min_booking_delay = intval($this->get_setting('min_booking_delay', 2));
@@ -157,34 +169,149 @@ class BookingAPI {
             $start = strtotime($schedule->time_start);
             $end = strtotime($schedule->time_end);
 
-            $current = $start;
+            // Calculer les plages disponibles (fenêtres sans réservations)
+            $available_windows = $this->calculate_available_windows($start, $end, $bookings);
 
-            while ($current + ($duration * 60) <= $end) {
-                $slot_time = date('H:i:s', $current);
-                $slot_end = date('H:i:s', $current + ($duration * 60));
+            // Pour chaque fenêtre disponible, générer les créneaux
+            foreach ($available_windows as $window) {
+                $current = $window['start'];
 
-                // Si une date est fournie, vérifier le délai minimum
-                if ($date) {
-                    $slot_datetime = strtotime($date . ' ' . $slot_time);
+                // Aligner sur le prochain créneau rond (multiple de 10 minutes)
+                $min = intval(date('i', $current));
+                $sec = intval(date('s', $current));
+                $offset = ($min % $slot_interval) * 60 + $sec;
+                if ($offset > 0) {
+                    $current += ($slot_interval * 60) - $offset;
+                }
 
-                    // Ignorer les créneaux trop proches dans le temps
-                    if ($slot_datetime < $min_allowed_datetime) {
-                        $current += 600;
-                        continue;
+                $window_duration = $window['end'] - $window['start'];
+                if (!empty($window['between_bookings']) && $window_duration < 3600) {
+                    // Fenêtre entre deux réservations : proposer uniquement le
+                    // premier et le dernier créneau pour coller aux réservations
+                    // existantes et éviter la fragmentation du temps libre
+                    $first_slot = null;
+                    $last_slot = null;
+                    $test = $current;
+
+                    $duration_sec = $duration * 60;
+                    while ($test + $duration_sec <= $window['end']) {
+                        $passes = true;
+                        if ($date) {
+                            $slot_datetime = strtotime($date . ' ' . date('H:i:s', $test));
+                            if ($slot_datetime < $min_allowed_datetime) {
+                                $passes = false;
+                            }
+                        }
+                        // Éviter les trous de 10 min inutilisables
+                        if ($passes) {
+                            $min_gap = $slot_interval * 60; // 10 min en secondes
+                            $gap_before = $test - $window['start'];
+                            $gap_after = $window['end'] - ($test + $duration_sec);
+                            if ($gap_before > 0 && $gap_before <= $min_gap) {
+                                $passes = false;
+                            }
+                            if ($gap_after > 0 && $gap_after <= $min_gap) {
+                                $passes = false;
+                            }
+                        }
+                        if ($passes) {
+                            if ($first_slot === null) {
+                                $first_slot = $test;
+                            }
+                            $last_slot = $test;
+                        }
+                        $test += $slot_interval * 60;
+                    }
+
+                    if ($first_slot !== null) {
+                        $slots[] = date('H:i', $first_slot);
+                    }
+                    if ($last_slot !== null && $last_slot !== $first_slot) {
+                        $slots[] = date('H:i', $last_slot);
+                    }
+                } else {
+                    // Fenêtre libre : tous les créneaux
+                    $duration_sec = $duration * 60;
+                    while ($current + $duration_sec <= $window['end']) {
+                        if ($date) {
+                            $slot_datetime = strtotime($date . ' ' . date('H:i:s', $current));
+                            if ($slot_datetime < $min_allowed_datetime) {
+                                $current += $slot_interval * 60;
+                                continue;
+                            }
+                        }
+
+                        // Éviter les trous de 10 min inutilisables
+                        $min_gap = $slot_interval * 60; // 10 min en secondes
+                        $gap_before = $current - $window['start'];
+                        $gap_after = $window['end'] - ($current + $duration_sec);
+                        if ($gap_before > 0 && $gap_before <= $min_gap) {
+                            $current += $slot_interval * 60;
+                            continue;
+                        }
+                        if ($gap_after > 0 && $gap_after <= $min_gap) {
+                            $current += $slot_interval * 60;
+                            continue;
+                        }
+
+                        $slots[] = date('H:i', $current);
+                        $current += $slot_interval * 60;
                     }
                 }
-
-                // Vérifier si le créneau est disponible
-                if ($this->is_slot_available($slot_time, $slot_end, $bookings)) {
-                    $slots[] = date('H:i', $current);
-                }
-
-                // Incrémenter de 10 minutes
-                $current += 600;
             }
         }
 
         return $slots;
+    }
+
+    /**
+     * Calcule les fenêtres de temps disponibles (sans réservations)
+     */
+    private function calculate_available_windows($start, $end, $bookings) {
+        if (empty($bookings)) {
+            return [['start' => $start, 'end' => $end, 'between_bookings' => false, 'after_booking' => false, 'before_booking' => false]];
+        }
+
+        // Trier les réservations par ordre chronologique
+        usort($bookings, function($a, $b) {
+            return strcmp($a->booking_time, $b->booking_time);
+        });
+
+        $windows = [];
+        $current_start = $start;
+
+        foreach ($bookings as $booking) {
+            $booking_start = strtotime($booking->booking_time);
+            $booking_end = $booking_start + ($booking->duration * 60);
+
+            // S'il y a un espace libre avant cette réservation
+            if ($current_start < $booking_start) {
+                $is_after_booking = ($current_start > $start);
+                $windows[] = [
+                    'start' => $current_start,
+                    'end' => $booking_start,
+                    'between_bookings' => $is_after_booking,
+                    'after_booking' => $is_after_booking,
+                    'before_booking' => true
+                ];
+            }
+
+            // Avancer le curseur après cette réservation
+            $current_start = max($current_start, $booking_end);
+        }
+
+        // Dernière fenêtre après la dernière réservation
+        if ($current_start < $end) {
+            $windows[] = [
+                'start' => $current_start,
+                'end' => $end,
+                'between_bookings' => false,
+                'after_booking' => ($current_start > $start),
+                'before_booking' => false
+            ];
+        }
+
+        return $windows;
     }
     
     private function time_to_minutes($time) {
@@ -315,24 +442,6 @@ class BookingAPI {
         }
 
         return null;
-    }
-    
-    private function is_slot_available($slot_start, $slot_end, $bookings) {
-        $slot_start_min = $this->time_to_minutes($slot_start);
-        $slot_end_min = $this->time_to_minutes($slot_end);
-        
-        foreach ($bookings as $booking) {
-            $booking_start_min = $this->time_to_minutes($booking->booking_time);
-            $duration = isset($booking->duration) ? intval($booking->duration) : 0;
-            $booking_end_min = $booking_start_min + $duration;
-            
-            // Vérifier le chevauchement
-            if ($slot_start_min < $booking_end_min && $slot_end_min > $booking_start_min) {
-                return false;
-            }
-        }
-        
-        return true;
     }
     
     /**

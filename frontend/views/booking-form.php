@@ -28,8 +28,8 @@
             $min_booking_delay = $min_booking_delay !== null ? intval($min_booking_delay) : 2;
             $max_booking_delay = $max_booking_delay !== null ? intval($max_booking_delay) : 90;
 
-            // Calculer la date minimum (maintenant + délai minimum en heures)
-            $min_date = date('Y-m-d', strtotime('+' . ceil($min_booking_delay / 24) . ' days'));
+            // Permettre aujourd'hui - le filtrage des créneaux par délai minimum se fait côté backend
+            $min_date = date('Y-m-d');
             // Calculer la date maximum (maintenant + délai maximum en jours)
             $max_date = date('Y-m-d', strtotime('+' . $max_booking_delay . ' days'));
             ?>

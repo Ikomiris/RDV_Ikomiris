@@ -1,4 +1,4 @@
-name: Deploy to production (FTP)
+name: Deploy to production (SSH)
 
 on:
   push:
@@ -7,38 +7,45 @@ on:
 
 jobs:
   deploy:
-    name: FTP deploy
+    name: SSH deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+      - name: Build deploy package
+        run: |
+          mkdir -p dist
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.vscode' \
+            --exclude='.claude' \
+            --exclude='node_modules' \
+            --exclude='vendor' \
+            --exclude='tests' \
+            --exclude='backup-*' \
+            --exclude='bin' \
+            --exclude='dist' \
+            --exclude='*.log' \
+            --exclude='*.zip' \
+            --exclude='*.md' \
+            --exclude='desktop.ini' \
+            --exclude='phpunit.xml' \
+            --exclude='composer.lock' \
+            --exclude='commit-phase1.sh' \
+            --exclude='check-timezone.php' \
+            --exclude='test-create-event.php' \
+            ./ dist/
+
+      - name: Deploy via SSH
+        uses: appleboy/scp-action@v1.0.0
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftp
-          port: 21
-          server-dir: /v2/wp-content/plugins/ikomiris-booking-system/
-          exclude: |
-            .git*
-            .git/**
-            .github/**
-            .vscode/**
-            .claude/**
-            node_modules/**
-            vendor/**
-            tests/**
-            backup-*/**
-            bin/**
-            **/*.log
-            **/*.zip
-            **/*.md
-            **/desktop.ini
-            phpunit.xml
-            composer.lock
-            commit-phase1.sh
-            check-timezone.php
-            test-create-event.php
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "dist/*"
+          target: "/home/u319690172/domains/ikomiris.com/public_html/wp-content/plugins/ikomiris-booking-system"
+          strip_components: 1
+          overwrite: true

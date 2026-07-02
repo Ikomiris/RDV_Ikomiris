@@ -1,0 +1,44 @@
+name: Deploy to production (FTP)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: FTP deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          port: 21
+          server-dir: /v2/wp-content/plugins/ikomiris-booking-system/
+          exclude: |
+            .git*
+            .git/**
+            .github/**
+            .vscode/**
+            .claude/**
+            node_modules/**
+            vendor/**
+            tests/**
+            backup-*/**
+            bin/**
+            **/*.log
+            **/*.zip
+            **/*.md
+            **/desktop.ini
+            phpunit.xml
+            composer.lock
+            commit-phase1.sh
+            check-timezone.php
+            test-create-event.php

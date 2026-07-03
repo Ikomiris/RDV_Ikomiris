@@ -243,6 +243,9 @@ class BookingAPI {
             $bookings_by_date[$row->booking_date][] = $row;
         }
 
+        // Un seul appel Google Calendar pour tout le mois (au lieu d'un par jour)
+        $google_bookings_by_date = $this->get_google_calendar_bookings_for_month($store_id, $month);
+
         $availability = [];
 
         for ($day = 1; $day <= $days_in_month; $day++) {
@@ -273,7 +276,7 @@ class BookingAPI {
             }
 
             $day_bookings = isset($bookings_by_date[$date]) ? $bookings_by_date[$date] : [];
-            $google_bookings = $this->get_google_calendar_bookings($store_id, $date);
+            $google_bookings = isset($google_bookings_by_date[$date]) ? $google_bookings_by_date[$date] : [];
             $all_bookings = array_merge($day_bookings, $google_bookings);
 
             $slots = $this->generate_available_slots($schedules, $duration, $all_bookings, $date);
@@ -620,7 +623,49 @@ class BookingAPI {
             return [];
         }
     }
-    
+
+    /**
+     * Récupère les événements Google Calendar d'un magasin pour un mois entier,
+     * en un seul appel (au lieu d'un appel par jour) — utilisé par get_monthly_availability().
+     *
+     * @param int $store_id ID du magasin
+     * @param string $month Mois au format Y-m
+     * @return array Tableau [date Y-m-d => bookings[]]
+     */
+    private function get_google_calendar_bookings_for_month($store_id, $month) {
+        $cache_key = $store_id . '_month_' . $month;
+        if (array_key_exists($cache_key, $this->google_calendar_cache)) {
+            return $this->google_calendar_cache[$cache_key];
+        }
+
+        global $wpdb;
+        $store = $wpdb->get_row($wpdb->prepare("
+            SELECT google_calendar_id FROM {$wpdb->prefix}ibs_stores WHERE id = %d
+        ", $store_id));
+
+        if (!$store || empty($store->google_calendar_id)) {
+            $this->google_calendar_cache[$cache_key] = [];
+            return [];
+        }
+
+        $google = new \IBS\Integrations\GoogleCalendar();
+
+        if (!$google->is_configured()) {
+            $this->google_calendar_cache[$cache_key] = [];
+            return [];
+        }
+
+        try {
+            $bookings_by_date = $google->get_events_for_month($store->google_calendar_id, $month);
+            $this->google_calendar_cache[$cache_key] = $bookings_by_date;
+            return $bookings_by_date;
+        } catch (\Exception $e) {
+            error_log('IBS: Erreur Google Calendar (mois) - ' . $e->getMessage());
+            $this->google_calendar_cache[$cache_key] = [];
+            return [];
+        }
+    }
+
     public function create_booking() {
         check_ajax_referer('ibs_frontend_nonce', 'nonce');
 

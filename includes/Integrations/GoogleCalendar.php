@@ -386,7 +386,108 @@ class GoogleCalendar {
         
         return array_merge($events, $busy_events);
     }
-    
+
+    /**
+     * Récupère les événements d'un calendrier pour un mois entier en une seule requête
+     * (events.list + freeBusy), puis répartit le résultat par jour. Évite de faire
+     * un appel Google Calendar par jour lors du calcul de la disponibilité mensuelle.
+     *
+     * @param string $calendar_id L'ID du calendrier Google
+     * @param string $month Mois au format Y-m
+     * @return array Tableau [date Y-m-d => bookings[]], au même format que get_events_for_date()
+     */
+    public function get_events_for_month($calendar_id, $month) {
+        if (!$this->is_configured() || empty($calendar_id)) {
+            return [];
+        }
+
+        $access_token = $this->get_access_token();
+        if (!$access_token) {
+            $this->debug_log('get_events_for_month: access_token manquant');
+            return [];
+        }
+
+        $first_day = $month . '-01';
+        $last_day = date('Y-m-t', strtotime($first_day));
+        $days_in_month = intval(date('t', strtotime($first_day)));
+
+        $timezone = $this->get_timezone_string();
+        $calendar_timezone = $this->get_calendar_timezone($calendar_id, $access_token);
+        $request_timezone = !empty($calendar_timezone) ? $calendar_timezone : $timezone;
+        $api_timezone = $this->get_api_timezone_string($request_timezone);
+        $timezone_obj = $this->get_timezone_object($request_timezone);
+
+        $dt_min = new \DateTime($first_day . ' 00:00:00', $timezone_obj);
+        $dt_max = new \DateTime($last_day . ' 23:59:59', $timezone_obj);
+
+        $dt_min_utc = clone $dt_min;
+        $dt_max_utc = clone $dt_max;
+        $dt_min_utc->setTimezone(new \DateTimeZone('UTC'));
+        $dt_max_utc->setTimezone(new \DateTimeZone('UTC'));
+
+        $time_min_formatted = $dt_min_utc->format('Y-m-d\TH:i:s\Z');
+        $time_max_formatted = $dt_max_utc->format('Y-m-d\TH:i:s\Z');
+
+        $url = add_query_arg([
+            'timeMin' => $time_min_formatted,
+            'timeMax' => $time_max_formatted,
+            'singleEvents' => 'true',
+            'orderBy' => 'startTime',
+            'maxResults' => 2500,
+        ], 'https://www.googleapis.com/calendar/v3/calendars/' . rawurlencode($calendar_id) . '/events');
+
+        $this->debug_log('events_month: calendar_id=' . $calendar_id . ', month=' . $month . ', tz=' . $timezone . ', cal_tz=' . $calendar_timezone . ', req_tz=' . $request_timezone . ', timeMin=' . $time_min_formatted . ', timeMax=' . $time_max_formatted);
+
+        $response = wp_remote_get($url, [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $access_token,
+                'Accept' => 'application/json',
+            ],
+            'timeout' => 20,
+        ]);
+
+        $items = [];
+        if (is_wp_error($response)) {
+            error_log('IBS Google Calendar: Erreur WP (mois) - ' . $response->get_error_message());
+            $this->debug_log('events_month: wp_error=' . $response->get_error_message());
+        } elseif (wp_remote_retrieve_response_code($response) !== 200) {
+            $body = wp_remote_retrieve_body($response);
+            error_log('IBS Google Calendar: Erreur API mois (HTTP ' . wp_remote_retrieve_response_code($response) . ') - ' . $body);
+            $this->debug_log('events_month: http=' . wp_remote_retrieve_response_code($response) . ', body=' . $body);
+        } else {
+            $data = json_decode(wp_remote_retrieve_body($response), true);
+            if (isset($data['items']) && is_array($data['items'])) {
+                $items = $data['items'];
+            }
+        }
+
+        $event_timezone = $request_timezone;
+        if (empty($calendar_timezone)) {
+            $event_timezone = $this->infer_timezone_from_events($items, $request_timezone);
+            $timezone_obj = $this->get_timezone_object($event_timezone);
+        }
+
+        $busy = $this->get_busy_for_date($calendar_id, $dt_min_utc, $dt_max_utc, $api_timezone);
+
+        $bookings_by_date = [];
+        for ($day = 1; $day <= $days_in_month; $day++) {
+            $date = $month . '-' . str_pad($day, 2, '0', STR_PAD_LEFT);
+
+            $events = $this->convert_events_to_bookings($items, $date, $timezone_obj);
+            $busy_events = $this->convert_busy_to_bookings($busy, $date, $timezone_obj);
+            $filtered_busy_events = array_values(array_filter($busy_events, function($booking) {
+                $duration = isset($booking->duration) ? intval($booking->duration) : 0;
+                return $duration < 1440;
+            }));
+
+            $bookings_by_date[$date] = array_merge($events, $filtered_busy_events);
+        }
+
+        $this->debug_log('events_month: items=' . count($items) . ', days=' . $days_in_month . ', event_tz=' . $event_timezone);
+
+        return $bookings_by_date;
+    }
+
     /**
      * Convertit les événements Google au format des réservations WordPress
      * 

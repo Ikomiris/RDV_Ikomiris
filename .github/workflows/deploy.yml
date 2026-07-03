@@ -38,17 +38,6 @@ jobs:
             --exclude='test-create-event.php' \
             ./ dist/
 
-      - name: Debug key (temporary, no key material printed)
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: |
-          printf '%s' "$SSH_KEY" | wc -c
-          printf '%s' "$SSH_KEY" | sha256sum
-          printf '%s' "$SSH_KEY" | head -n1 | cat -A | head -c 80
-          echo
-          printf '%s' "$SSH_KEY" | tail -n1 | cat -A | head -c 80
-          echo
-
       - name: Deploy via SSH
         uses: appleboy/scp-action@v1.0.0
         with:

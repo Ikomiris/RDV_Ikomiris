@@ -75,16 +75,20 @@ final class Ikomiris_Booking_System {
     }
 
     public function init() {
-        // Charger les traductions
         load_plugin_textdomain('ikomiris-booking', false, dirname(IBS_PLUGIN_BASENAME) . '/languages');
 
-        // Initialiser les composants
         new IBS\Admin\AdminMenu();
         new IBS\Admin\Assets();
         new IBS\Frontend\Shortcode();
         new IBS\Frontend\Assets();
         new IBS\Frontend\CancellationHandler();
         new IBS\API\BookingAPI();
+
+        // Appliquer les migrations DB sur les installations existantes
+        add_action('admin_init', function () {
+            require_once IBS_PLUGIN_DIR . 'includes/Installer.php';
+            IBS\Installer::maybe_upgrade();
+        });
     }
 }
 

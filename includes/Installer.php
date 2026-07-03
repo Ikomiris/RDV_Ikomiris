@@ -164,6 +164,12 @@ class Installer {
             $wpdb->query("ALTER TABLE $table_bookings ADD cancelled_at datetime DEFAULT NULL AFTER google_event_id");
         }
 
+        // Migration : Ajouter l'index composite (store_id, booking_date, status) pour accélérer les recherches de disponibilité
+        $index_exists = $wpdb->get_results("SHOW INDEX FROM $table_bookings WHERE Key_name = 'idx_availability'");
+        if (empty($index_exists)) {
+            $wpdb->query("ALTER TABLE $table_bookings ADD INDEX idx_availability (store_id, booking_date, status)");
+        }
+
         // Table des paramètres
         $table_settings = $wpdb->prefix . 'ibs_settings';
         $sql_settings = "CREATE TABLE $table_settings (
@@ -321,7 +327,27 @@ class Installer {
     }
     
     public static function deactivate() {
-        // Nettoyer les cron jobs si nécessaire
         wp_clear_scheduled_hook('ibs_send_reminder_emails');
+    }
+
+    /**
+     * Applique les migrations DB pour les installations existantes.
+     * Appelé sur admin_init — protégé par un numéro de version pour ne tourner qu'une fois.
+     */
+    public static function maybe_upgrade() {
+        $installed_version = get_option('ibs_db_version', '0');
+        if (version_compare($installed_version, '1.0.3', '>=')) {
+            return;
+        }
+
+        global $wpdb;
+        $table_bookings = $wpdb->prefix . 'ibs_bookings';
+
+        $index_exists = $wpdb->get_results("SHOW INDEX FROM $table_bookings WHERE Key_name = 'idx_availability'");
+        if (empty($index_exists)) {
+            $wpdb->query("ALTER TABLE $table_bookings ADD INDEX idx_availability (store_id, booking_date, status)");
+        }
+
+        update_option('ibs_db_version', '1.0.3');
     }
 }

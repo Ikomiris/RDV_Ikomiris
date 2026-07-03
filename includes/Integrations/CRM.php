@@ -39,23 +39,23 @@ class CRM {
 
         // Préparer les données à envoyer
         $post_data = [
-            'tenant' => $store->crm_tenant_id,
-            'email' => $customer_data['email'],
-            'first_name' => $customer_data['first_name'],
-            'last_name' => $customer_data['last_name'],
-            'phone' => $customer_data['phone']
+            'tenant'    => $store->crm_tenant_id,
+            'email'     => $customer_data['email'],
+            'firstname' => $customer_data['first_name'],
+            'lastname'  => $customer_data['last_name'],
+            'phone'     => $customer_data['phone']
         ];
 
         // Log pour debug
         error_log('IBS CRM: Envoi des données client vers ' . $store->crm_api_url);
         error_log('IBS CRM: Données - ' . json_encode($post_data));
 
-        // Envoyer la requête POST au CRM
+        // Envoyer la requête POST au CRM (JSON)
         $response = wp_remote_post($store->crm_api_url, [
-            'body' => $post_data,
+            'body'    => json_encode($post_data),
             'timeout' => 15,
             'sslverify' => true,
-            'headers' => []
+            'headers' => ['Content-Type' => 'application/json']
         ]);
 
         // Vérifier les erreurs

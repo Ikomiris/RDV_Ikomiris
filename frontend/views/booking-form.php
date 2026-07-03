@@ -20,19 +20,7 @@
     <div class="ibs-section ibs-section-disabled" id="ibs-section-date">
         <h2 class="ibs-section-title"><?php _e('Choisissez une date', 'ikomiris-booking'); ?></h2>
         <div class="ibs-date-container">
-            <?php
-            global $wpdb;
-            $min_booking_delay = $wpdb->get_var("SELECT setting_value FROM {$wpdb->prefix}ibs_settings WHERE setting_key = 'min_booking_delay'");
-            $max_booking_delay = $wpdb->get_var("SELECT setting_value FROM {$wpdb->prefix}ibs_settings WHERE setting_key = 'max_booking_delay'");
-
-            $min_booking_delay = $min_booking_delay !== null ? intval($min_booking_delay) : 2;
-            $max_booking_delay = $max_booking_delay !== null ? intval($max_booking_delay) : 90;
-
-            // Permettre aujourd'hui - le filtrage des créneaux par délai minimum se fait côté backend
-            $min_date = date('Y-m-d');
-            // Calculer la date maximum (maintenant + délai maximum en jours)
-            $max_date = date('Y-m-d', strtotime('+' . $max_booking_delay . ' days'));
-            ?>
+            <?php // Les dates min/max sont gérées côté JS via ibsFrontend.settings (injecté par wp_localize_script) ?>
             <div class="ibs-date-picker-wrapper">
                 <input type="text" id="ibs-date-picker" class="ibs-date-picker-input"
                        placeholder="<?php _e('Cliquez pour sélectionner une date', 'ikomiris-booking'); ?>"

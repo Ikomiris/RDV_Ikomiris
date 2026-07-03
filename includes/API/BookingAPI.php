@@ -6,7 +6,16 @@ if (!defined('ABSPATH')) {
 }
 
 class BookingAPI {
-    
+
+    // Cache statique pour get_setting() — partagé entre toutes les instances de la requête
+    private static $settings_cache = [];
+
+    // Cache de la durée de service entre verify_slot_availability() et create_booking()
+    private $cached_service_duration = null;
+
+    // Cache des événements Google Calendar pour éviter le double appel dans la même requête
+    private $google_calendar_cache = [];
+
     public function __construct() {
         // Actions AJAX pour les utilisateurs connectés et non connectés
         add_action('wp_ajax_ibs_refresh_nonce', [$this, 'refresh_nonce']);
@@ -14,18 +23,25 @@ class BookingAPI {
 
         add_action('wp_ajax_ibs_get_stores', [$this, 'get_stores']);
         add_action('wp_ajax_nopriv_ibs_get_stores', [$this, 'get_stores']);
-        
+
         add_action('wp_ajax_ibs_get_services', [$this, 'get_services']);
         add_action('wp_ajax_nopriv_ibs_get_services', [$this, 'get_services']);
-        
+
         add_action('wp_ajax_ibs_get_available_slots', [$this, 'get_available_slots']);
         add_action('wp_ajax_nopriv_ibs_get_available_slots', [$this, 'get_available_slots']);
-        
+
+        add_action('wp_ajax_ibs_get_monthly_availability', [$this, 'get_monthly_availability']);
+        add_action('wp_ajax_nopriv_ibs_get_monthly_availability', [$this, 'get_monthly_availability']);
+
         add_action('wp_ajax_ibs_create_booking', [$this, 'create_booking']);
         add_action('wp_ajax_nopriv_ibs_create_booking', [$this, 'create_booking']);
-        
+
         add_action('wp_ajax_ibs_cancel_booking', [$this, 'cancel_booking']);
         add_action('wp_ajax_nopriv_ibs_cancel_booking', [$this, 'cancel_booking']);
+
+        // Action de synchro Google Calendar en arrière-plan (non-bloquante)
+        add_action('wp_ajax_ibs_background_sync', [$this, 'handle_background_sync']);
+        add_action('wp_ajax_nopriv_ibs_background_sync', [$this, 'handle_background_sync']);
         
         // Actions AJAX pour l'admin
         add_action('wp_ajax_ibs_admin_save_store', [$this, 'admin_save_store']);
@@ -151,6 +167,122 @@ class BookingAPI {
         $slots = $this->generate_available_slots($schedules, $duration, $all_bookings, $date);
 
         wp_send_json_success($slots);
+    }
+
+    /**
+     * Retourne, pour chaque jour d'un mois donné, si au moins un créneau est disponible.
+     * Permet au date picker frontend de griser les jours sans disponibilité.
+     */
+    public function get_monthly_availability() {
+        check_ajax_referer('ibs_frontend_nonce', 'nonce');
+
+        $store_id = isset($_POST['store_id']) ? intval($_POST['store_id']) : 0;
+        $service_id = isset($_POST['service_id']) ? intval($_POST['service_id']) : 0;
+        $month = isset($_POST['month']) ? sanitize_text_field($_POST['month']) : '';
+
+        if (!$store_id || !$service_id || !preg_match('/^\d{4}-\d{2}$/', $month)) {
+            wp_send_json_error(['message' => __('Paramètres manquants', 'ikomiris-booking')]);
+        }
+
+        // Cache court pour éviter de recalculer (et de rappeler Google Calendar) à chaque navigation
+        $cache_key = 'ibs_month_avail_' . $store_id . '_' . $service_id . '_' . $month;
+        $cached = get_transient($cache_key);
+        if ($cached !== false) {
+            wp_send_json_success($cached);
+        }
+
+        global $wpdb;
+
+        $service = $wpdb->get_row($wpdb->prepare("
+            SELECT duration FROM {$wpdb->prefix}ibs_services WHERE id = %d
+        ", $service_id));
+
+        if (!$service) {
+            wp_send_json_error(['message' => __('Service introuvable', 'ikomiris-booking')]);
+        }
+
+        $duration = intval($service->duration);
+
+        $first_day = $month . '-01';
+        $last_day = date('Y-m-t', strtotime($first_day));
+        $days_in_month = intval(date('t', strtotime($first_day)));
+
+        $today = current_time('Y-m-d');
+        $max_booking_delay = intval($this->get_setting('max_booking_delay', 90));
+        $max_date = date('Y-m-d', current_time('timestamp') + ($max_booking_delay * 86400));
+
+        // Horaires du magasin, groupés par jour de semaine
+        $schedules_by_dow = [];
+        $schedules_rows = $wpdb->get_results($wpdb->prepare("
+            SELECT day_of_week, time_start, time_end
+            FROM {$wpdb->prefix}ibs_schedules
+            WHERE store_id = %d AND is_active = 1
+        ", $store_id));
+        foreach ($schedules_rows as $row) {
+            $schedules_by_dow[intval($row->day_of_week)][] = $row;
+        }
+
+        // Exceptions du mois
+        $exceptions_by_date = [];
+        $exceptions_rows = $wpdb->get_results($wpdb->prepare("
+            SELECT * FROM {$wpdb->prefix}ibs_exceptions
+            WHERE store_id = %d AND exception_date BETWEEN %s AND %s
+        ", $store_id, $first_day, $last_day));
+        foreach ($exceptions_rows as $row) {
+            $exceptions_by_date[$row->exception_date] = $row;
+        }
+
+        // Réservations WordPress du mois, groupées par date
+        $bookings_by_date = [];
+        $bookings_rows = $wpdb->get_results($wpdb->prepare("
+            SELECT booking_date, booking_time, duration
+            FROM {$wpdb->prefix}ibs_bookings
+            WHERE store_id = %d AND booking_date BETWEEN %s AND %s AND status IN ('pending', 'confirmed')
+        ", $store_id, $first_day, $last_day));
+        foreach ($bookings_rows as $row) {
+            $bookings_by_date[$row->booking_date][] = $row;
+        }
+
+        $availability = [];
+
+        for ($day = 1; $day <= $days_in_month; $day++) {
+            $date = $month . '-' . str_pad($day, 2, '0', STR_PAD_LEFT);
+
+            if ($date < $today || $date > $max_date) {
+                continue; // hors plage réservable (géré côté flatpickr via minDate/maxDate)
+            }
+
+            $day_of_week = intval(date('w', strtotime($date)));
+            $schedules = isset($schedules_by_dow[$day_of_week]) ? $schedules_by_dow[$day_of_week] : [];
+
+            if (isset($exceptions_by_date[$date])) {
+                $exception = $exceptions_by_date[$date];
+                if ($exception->exception_type === 'closed') {
+                    $availability[$date] = false;
+                    continue;
+                }
+                $schedules = [(object)[
+                    'time_start' => $exception->time_start,
+                    'time_end' => $exception->time_end
+                ]];
+            }
+
+            if (empty($schedules)) {
+                $availability[$date] = false;
+                continue;
+            }
+
+            $day_bookings = isset($bookings_by_date[$date]) ? $bookings_by_date[$date] : [];
+            $google_bookings = $this->get_google_calendar_bookings($store_id, $date);
+            $all_bookings = array_merge($day_bookings, $google_bookings);
+
+            $slots = $this->generate_available_slots($schedules, $duration, $all_bookings, $date);
+            $availability[$date] = !empty($slots);
+        }
+
+        set_transient($cache_key, $availability, 3 * MINUTE_IN_SECONDS);
+
+        wp_send_json_success($availability);
     }
 
     /**
@@ -452,41 +584,39 @@ class BookingAPI {
      * @return array Tableau d'objets avec booking_time et duration
      */
     private function get_google_calendar_bookings($store_id, $date) {
-        // Récupérer le google_calendar_id du magasin
+        // Cache par requête : évite le double appel entre get_available_slots() et verify_slot_availability()
+        $cache_key = $store_id . '_' . $date;
+        if (array_key_exists($cache_key, $this->google_calendar_cache)) {
+            return $this->google_calendar_cache[$cache_key];
+        }
+
         global $wpdb;
         $store = $wpdb->get_row($wpdb->prepare("
             SELECT google_calendar_id FROM {$wpdb->prefix}ibs_stores WHERE id = %d
         ", $store_id));
-        
+
         if (!$store || empty($store->google_calendar_id)) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('IBS Google Calendar: Aucun calendar_id pour store_id=' . $store_id);
-            }
             $this->debug_log('store_id=' . $store_id . ' sans calendar_id');
+            $this->google_calendar_cache[$cache_key] = [];
             return [];
         }
-        
-        // Initialiser Google Calendar et récupérer les événements
+
         $google = new \IBS\Integrations\GoogleCalendar();
-        
+
         if (!$google->is_configured()) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('IBS Google Calendar: Non configuré lors du fetch (store_id=' . $store_id . ')');
-            }
             $this->debug_log('store_id=' . $store_id . ' google non configure');
+            $this->google_calendar_cache[$cache_key] = [];
             return [];
         }
-        
+
         try {
             $events = $google->get_events_for_date($store->google_calendar_id, $date);
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('IBS Google Calendar: store_id=' . $store_id . ', date=' . $date . ', events=' . count($events));
-            }
             $this->debug_log('store_id=' . $store_id . ', date=' . $date . ', events=' . count($events));
+            $this->google_calendar_cache[$cache_key] = $events;
             return $events;
         } catch (\Exception $e) {
-            error_log('IBS: Erreur lors de la récupération des événements Google Calendar - ' . $e->getMessage());
-            $this->debug_log('store_id=' . $store_id . ', exception=' . $e->getMessage());
+            error_log('IBS: Erreur Google Calendar - ' . $e->getMessage());
+            $this->google_calendar_cache[$cache_key] = [];
             return [];
         }
     }
@@ -582,64 +712,57 @@ class BookingAPI {
         }
 
         // Vérifier que le créneau est toujours disponible
+        // verify_slot_availability() met aussi en cache $this->cached_service_duration
         if (!$this->verify_slot_availability($store_id, $service_id, $date, $time)) {
             wp_send_json_error(['message' => __('Ce créneau n\'est plus disponible. Veuillez en choisir un autre.', 'ikomiris-booking')]);
         }
-        
-        // Récupérer la durée du service
-        $service = $wpdb->get_row($wpdb->prepare("
-            SELECT duration FROM {$wpdb->prefix}ibs_services WHERE id = %d
-        ", $service_id));
-        
-        if (!$service) {
+
+        // Réutiliser la durée mise en cache par verify_slot_availability() — évite un SELECT supplémentaire
+        if ($this->cached_service_duration === null) {
             wp_send_json_error(['message' => __('Service introuvable', 'ikomiris-booking')]);
         }
-        
-        // Générer un token d'annulation unique
+        $service_duration = $this->cached_service_duration;
+
         $cancel_token = bin2hex(random_bytes(32));
-        
-        // Insérer la réservation
+
         $inserted = $wpdb->insert(
             $wpdb->prefix . 'ibs_bookings',
             [
-                'store_id' => $store_id,
-                'service_id' => $service_id,
-                'booking_date' => $date,
-                'booking_time' => $time,
-                'duration' => $service->duration,
-                'customer_firstname' => $firstname,
-                'customer_lastname' => $lastname,
-                'customer_email' => $email,
-                'customer_phone' => $phone,
-                'customer_message' => $message,
+                'store_id'                => $store_id,
+                'service_id'              => $service_id,
+                'booking_date'            => $date,
+                'booking_time'            => $time,
+                'duration'                => $service_duration,
+                'customer_firstname'      => $firstname,
+                'customer_lastname'       => $lastname,
+                'customer_email'          => $email,
+                'customer_phone'          => $phone,
+                'customer_message'        => $message,
                 'customer_gift_card_code' => $gift_card_code,
-                'status' => 'confirmed',
-                'cancel_token' => $cancel_token,
+                'status'                  => 'confirmed',
+                'cancel_token'            => $cancel_token,
             ],
             ['%d', '%d', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s']
         );
-        
+
         if (!$inserted) {
             wp_send_json_error(['message' => __('Erreur lors de la création de la réservation', 'ikomiris-booking')]);
         }
-        
+
         $booking_id = $wpdb->insert_id;
-        
-        // Synchroniser avec Google Calendar
-        $this->sync_to_google_calendar($booking_id, $store_id, $service_id, $date, $time, $firstname, $lastname, $email, $phone, $message, $gift_card_code, $service->duration);
-        
-        // Envoyer les emails de confirmation
+
+        // Synchro Google Calendar en arrière-plan (non-bloquante)
+        // L'utilisateur reçoit la confirmation immédiatement sans attendre l'API Google
+        $this->schedule_google_sync($booking_id);
+
+        // Emails et notifications (rapides, restent synchrones)
         $this->send_confirmation_emails($booking_id);
-
-        // Envoyer les notifications WhatsApp
         $this->send_whatsapp_notifications($booking_id);
-
-        // Envoyer les informations du client au CRM
         $this->send_to_crm($store_id, $firstname, $lastname, $email, $phone);
 
         wp_send_json_success([
-            'message' => __('Réservation confirmée !', 'ikomiris-booking'),
-            'booking_id' => $booking_id
+            'message'    => __('Réservation confirmée !', 'ikomiris-booking'),
+            'booking_id' => $booking_id,
         ]);
     }
     
@@ -875,21 +998,88 @@ class BookingAPI {
     }
 
     /**
-     * Récupère un paramètre depuis la table ibs_settings
-     *
-     * @param string $key Clé du paramètre
-     * @param mixed $default Valeur par défaut
-     * @return mixed Valeur du paramètre
+     * Récupère un paramètre depuis la table ibs_settings avec cache statique.
+     * Évite les requêtes répétées pour la même clé dans une même requête PHP.
      */
     private function get_setting($key, $default = '') {
+        if (array_key_exists($key, self::$settings_cache)) {
+            return self::$settings_cache[$key];
+        }
         global $wpdb;
-
         $value = $wpdb->get_var($wpdb->prepare("
-            SELECT setting_value FROM {$wpdb->prefix}ibs_settings
-            WHERE setting_key = %s
+            SELECT setting_value FROM {$wpdb->prefix}ibs_settings WHERE setting_key = %s
         ", $key));
+        self::$settings_cache[$key] = $value !== null ? $value : $default;
+        return self::$settings_cache[$key];
+    }
 
-        return $value !== null ? $value : $default;
+    /**
+     * Planifie la synchro Google Calendar en arrière-plan via une requête HTTP non-bloquante.
+     * L'utilisateur reçoit la confirmation immédiatement, sans attendre l'API Google.
+     */
+    private function schedule_google_sync($booking_id) {
+        $secret = wp_hash('ibs_gsync_' . $booking_id . AUTH_SALT);
+        set_transient('ibs_gsync_' . $booking_id, $secret, 120);
+
+        wp_remote_post(admin_url('admin-ajax.php'), [
+            'timeout'   => 0.01,
+            'blocking'  => false,
+            'sslverify' => false,
+            'body'      => [
+                'action'     => 'ibs_background_sync',
+                'booking_id' => $booking_id,
+                'secret'     => $secret,
+            ],
+        ]);
+    }
+
+    /**
+     * Handler AJAX pour la synchro Google Calendar en arrière-plan.
+     * Appelé de façon non-bloquante par schedule_google_sync().
+     */
+    public function handle_background_sync() {
+        $booking_id = intval($_POST['booking_id'] ?? 0);
+        $secret     = sanitize_text_field($_POST['secret'] ?? '');
+
+        if (!$booking_id || !$secret) {
+            wp_die();
+        }
+
+        $stored_secret = get_transient('ibs_gsync_' . $booking_id);
+        if (!$stored_secret || !hash_equals($stored_secret, $secret)) {
+            wp_die();
+        }
+
+        delete_transient('ibs_gsync_' . $booking_id);
+
+        global $wpdb;
+        $booking = $wpdb->get_row($wpdb->prepare("
+            SELECT b.*, s.duration AS svc_duration
+            FROM {$wpdb->prefix}ibs_bookings b
+            JOIN {$wpdb->prefix}ibs_services s ON s.id = b.service_id
+            WHERE b.id = %d
+        ", $booking_id));
+
+        if (!$booking) {
+            wp_die();
+        }
+
+        $this->sync_to_google_calendar(
+            $booking->id,
+            $booking->store_id,
+            $booking->service_id,
+            $booking->booking_date,
+            $booking->booking_time,
+            $booking->customer_firstname,
+            $booking->customer_lastname,
+            $booking->customer_email,
+            $booking->customer_phone,
+            $booking->customer_message,
+            $booking->customer_gift_card_code,
+            $booking->svc_duration
+        );
+
+        wp_die();
     }
 
     /**
@@ -904,7 +1094,6 @@ class BookingAPI {
     private function verify_slot_availability($store_id, $service_id, $date, $time) {
         global $wpdb;
 
-        // Récupérer la durée du service
         $service = $wpdb->get_row($wpdb->prepare("
             SELECT duration FROM {$wpdb->prefix}ibs_services WHERE id = %d
         ", $service_id));
@@ -914,6 +1103,8 @@ class BookingAPI {
         }
 
         $duration = intval($service->duration);
+        // Mise en cache pour éviter le re-fetch dans create_booking()
+        $this->cached_service_duration = $duration;
         $time_with_seconds = strlen($time) === 5 ? $time . ':00' : $time;
 
         // Récupérer les réservations existantes

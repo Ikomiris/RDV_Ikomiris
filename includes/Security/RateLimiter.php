@@ -165,15 +165,15 @@ class RateLimiter {
         $fingerprint = $this->get_client_fingerprint();
 
         // Limites :
-        // - 5 réservations par heure par empreinte
-        // - 1 réservation par 10 minutes par empreinte
-        $hourly_check = $this->check_rate_limit('create_booking_hourly', $fingerprint, 5, 3600);
+        // - 10 réservations par heure par empreinte
+        // - 3 réservations par 5 minutes par empreinte
+        $hourly_check = $this->check_rate_limit('create_booking_hourly', $fingerprint, 10, 3600);
 
         if (!$hourly_check['allowed']) {
             return $hourly_check;
         }
 
-        $quick_check = $this->check_rate_limit('create_booking_quick', $fingerprint, 1, 600);
+        $quick_check = $this->check_rate_limit('create_booking_quick', $fingerprint, 3, 300);
 
         return $quick_check;
     }

@@ -6,30 +6,45 @@ if (!defined('ABSPATH')) {
 }
 
 class Assets {
-    
+
+    // Cache statique partagé entre enqueue_scripts() et output_custom_styles()
+    private static $all_settings = null;
+
     public function __construct() {
         add_action('wp_enqueue_scripts', [$this, 'enqueue_scripts']);
         add_action('wp_head', [$this, 'output_custom_styles']);
     }
-    
+
+    // Une seule requête pour tous les settings — résultat mis en cache statique
+    private function get_all_settings() {
+        if (self::$all_settings === null) {
+            global $wpdb;
+            $rows = $wpdb->get_results(
+                "SELECT setting_key, setting_value FROM {$wpdb->prefix}ibs_settings"
+            );
+            self::$all_settings = [];
+            foreach ($rows as $row) {
+                self::$all_settings[$row->setting_key] = $row->setting_value;
+            }
+        }
+        return self::$all_settings;
+    }
+
     public function enqueue_scripts() {
-        // CSS Frontend
         wp_enqueue_style(
             'ibs-frontend-css',
             IBS_PLUGIN_URL . 'frontend/assets/css/frontend.css',
             [],
             IBS_VERSION
         );
-        
-        // Flatpickr CSS (date picker)
+
         wp_enqueue_style(
             'flatpickr-css',
             'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css',
             [],
             '4.6.13'
         );
-        
-        // Flatpickr JavaScript
+
         wp_enqueue_script(
             'flatpickr-js',
             'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.js',
@@ -37,8 +52,7 @@ class Assets {
             '4.6.13',
             true
         );
-        
-        // Flatpickr French locale
+
         wp_enqueue_script(
             'flatpickr-fr',
             'https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/fr.js',
@@ -46,8 +60,7 @@ class Assets {
             '4.6.13',
             true
         );
-        
-        // JavaScript Frontend
+
         wp_enqueue_script(
             'ibs-frontend-js',
             IBS_PLUGIN_URL . 'frontend/assets/js/frontend.js',
@@ -55,48 +68,37 @@ class Assets {
             IBS_VERSION,
             true
         );
-        
-        // Récupérer les paramètres de réservation
-        global $wpdb;
-        $min_booking_delay = $wpdb->get_var("SELECT setting_value FROM {$wpdb->prefix}ibs_settings WHERE setting_key = 'min_booking_delay'");
-        $max_booking_delay = $wpdb->get_var("SELECT setting_value FROM {$wpdb->prefix}ibs_settings WHERE setting_key = 'max_booking_delay'");
 
-        $min_booking_delay = $min_booking_delay !== null ? intval($min_booking_delay) : 2;
-        $max_booking_delay = $max_booking_delay !== null ? intval($max_booking_delay) : 90;
+        $settings = $this->get_all_settings();
+        $min_booking_delay = isset($settings['min_booking_delay']) ? intval($settings['min_booking_delay']) : 2;
+        $max_booking_delay = isset($settings['max_booking_delay']) ? intval($settings['max_booking_delay']) : 90;
 
-        // Localisation
         wp_localize_script('ibs-frontend-js', 'ibsFrontend', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('ibs_frontend_nonce'),
+            'nonce'   => wp_create_nonce('ibs_frontend_nonce'),
             'settings' => [
-                'minBookingDelay' => $min_booking_delay, // Heures
-                'maxBookingDelay' => $max_booking_delay, // Jours
+                'minBookingDelay' => $min_booking_delay,
+                'maxBookingDelay' => $max_booking_delay,
             ],
             'strings' => [
-                'loading' => __('Chargement...', 'ikomiris-booking'),
-                'error' => __('Une erreur est survenue', 'ikomiris-booking'),
-                'selectStore' => __('Veuillez sélectionner un magasin', 'ikomiris-booking'),
+                'loading'       => __('Chargement...', 'ikomiris-booking'),
+                'error'         => __('Une erreur est survenue', 'ikomiris-booking'),
+                'selectStore'   => __('Veuillez sélectionner un magasin', 'ikomiris-booking'),
                 'selectService' => __('Veuillez sélectionner un service', 'ikomiris-booking'),
-                'selectDate' => __('Veuillez sélectionner une date', 'ikomiris-booking'),
-                'selectTime' => __('Veuillez sélectionner un créneau horaire', 'ikomiris-booking'),
-                'noSlots' => __('Aucun créneau disponible pour cette date', 'ikomiris-booking'),
-                'fillForm' => __('Veuillez remplir tous les champs obligatoires', 'ikomiris-booking'),
-                'invalidEmail' => __('Adresse email invalide', 'ikomiris-booking'),
+                'selectDate'    => __('Veuillez sélectionner une date', 'ikomiris-booking'),
+                'selectTime'    => __('Veuillez sélectionner un créneau horaire', 'ikomiris-booking'),
+                'noSlots'       => __('Aucun créneau disponible pour cette date', 'ikomiris-booking'),
+                'fillForm'      => __('Veuillez remplir tous les champs obligatoires', 'ikomiris-booking'),
+                'invalidEmail'  => __('Adresse email invalide', 'ikomiris-booking'),
                 'bookingSuccess' => __('Votre réservation a été confirmée !', 'ikomiris-booking'),
-            ]
+            ],
         ]);
     }
 
-    /**
-     * Récupérer une valeur de style depuis la base de données
-     */
     private function get_style_setting($key, $default = '') {
-        global $wpdb;
-        $value = $wpdb->get_var($wpdb->prepare(
-            "SELECT setting_value FROM {$wpdb->prefix}ibs_settings WHERE setting_key = %s",
-            $key
-        ));
-        return $value !== null ? $value : $default;
+        $settings = $this->get_all_settings();
+        $value = isset($settings[$key]) ? $settings[$key] : null;
+        return ($value !== null && $value !== '') ? $value : $default;
     }
 
     /**
@@ -151,12 +153,7 @@ class Assets {
         echo "    color: {$text_color} !important;\n";
         echo "}\n\n";
 
-        // Sections
-        echo ".ibs-section {\n";
-        echo "    background: {$section_background} !important;\n";
-        echo "    border-radius: {$card_border_radius}px !important;\n";
-        echo "    box-shadow: {$box_shadow} !important;\n";
-        echo "}\n\n";
+        // Sections — pas de fond intermédiaire, les cartes s'affichent directement sur le fond de page
 
         // Titres
         echo ".ibs-section-title,\n";
